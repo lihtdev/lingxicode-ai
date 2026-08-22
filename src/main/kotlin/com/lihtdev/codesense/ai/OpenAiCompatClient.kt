@@ -103,7 +103,7 @@ class OpenAiCompatClient : AiClient {
         } catch (e: Exception) {
             throw AiClientException(CodeSenseBundle.message("error.parseFailed", e.message ?: ""), e)
         }
-        return parsed.data.map { it.id.trim() }.filter { it.isNotEmpty() }
+        return parsed.data.map { it.id.trim() }.filter { it.isNotEmpty() }.sorted()
     }
 
     /** 将 HTTP 状态码与错误体映射为用户可读提示 */

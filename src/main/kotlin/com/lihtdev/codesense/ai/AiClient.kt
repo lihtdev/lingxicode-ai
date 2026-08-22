@@ -17,7 +17,7 @@ interface AiClient {
 
     /**
      * 获取提供商支持的模型列表（OpenAI 兼容 `GET {baseUrl}/models`）。
-     * @return 模型名列表（按返回顺序）
+     * @return 模型名列表（按字母升序排列）
      * @throws AiClientException 配置缺失、网络失败、HTTP 错误或响应异常时抛出
      */
     fun listModels(provider: AiProviderConfig, apiKey: String): List<String>

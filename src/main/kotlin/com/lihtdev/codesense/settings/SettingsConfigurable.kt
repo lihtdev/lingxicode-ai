@@ -411,6 +411,9 @@ class SettingsConfigurable : Configurable {
         private val planTypeCombo = JComboBox<ProviderPlanType>()
         private val baseUrlField = JTextField(30)
         private val apiKeyField = JBPasswordField()
+        private val testButton = JButton(CodeSenseBundle.message("settings.testConnection")).apply {
+            addActionListener { testConnection() }
+        }
 
         // 模型复选框列表
         private val modelListModel = DefaultListModel<CheckableModel>()
@@ -446,6 +449,8 @@ class SettingsConfigurable : Configurable {
             setCancelButtonText(CodeSenseBundle.message("settings.addProvider.cancel"))
             onPresetSelected()
             init()
+            // 设置弹窗最小宽度
+            window.minimumSize = Dimension(500, 300)
         }
 
         override fun createCenterPanel(): JComponent {
@@ -489,19 +494,43 @@ class SettingsConfigurable : Configurable {
             return FormBuilder.createFormBuilder()
                 .addComponent(hintLabel)
                 .addSeparator()
+                .addVerticalGap(6)
                 .addLabeledComponent(JLabel(CodeSenseBundle.message("settings.addProvider.template")), presetCombo)
-                .addLabeledComponent(JLabel(CodeSenseBundle.message("settings.provider")), nameField)
+                .addVerticalGap(6)
+                .addLabeledComponent(JLabel(SettingsConfigurable.requiredLabel("settings.provider")), nameField)
+                .addVerticalGap(6)
                 .addLabeledComponent(JLabel(CodeSenseBundle.message("settings.planType")), planTypeCombo)
-                .addLabeledComponent(JLabel(CodeSenseBundle.message("settings.baseUrl")), baseUrlWithNote)
+                .addVerticalGap(6)
+                .addLabeledComponent(JLabel(SettingsConfigurable.requiredLabel("settings.baseUrl")), baseUrlWithNote)
+                .addVerticalGap(6)
                 .addLabeledComponent(JLabel(CodeSenseBundle.message("settings.apiKey")), apiKeyField)
+                .addVerticalGap(6)
                 .addSeparator()
-                .addComponent(JLabel(CodeSenseBundle.message("settings.addProvider.selectModels")).apply {
+                .addComponent(JLabel(SettingsConfigurable.requiredLabel("settings.addProvider.selectModels")).apply {
                     font = font.deriveFont(Font.BOLD, 12f)
                 })
                 .addComponent(buttonRow)
                 .addComponent(listScroll)
                 .addComponent(manualRow)
                 .panel
+        }
+
+        /** 在底部按钮行「确定」左侧插入测试连接按钮，保持按钮间距与其他按钮一致 */
+        override fun createSouthPanel(): JComponent {
+            val south = super.createSouthPanel()
+            val okButton = getButton(getOKAction()) ?: return south
+            val container = okButton.parent ?: return south
+            if (container.components.none { it === testButton }) {
+                container.add(testButton, 0)
+                // 与平台 BASE_BUTTON_GAP=12 的间距算法保持一致
+                val insets = testButton.insets ?: JBUI.insets(0)
+                val gap = JBUI.scale(12) - insets.left - insets.right
+                if (gap > 0) {
+                    container.add(javax.swing.Box.createRigidArea(Dimension(gap, 0)), 1)
+                }
+                container.revalidate()
+            }
+            return south
         }
 
         private fun onPresetSelected() {
@@ -561,6 +590,84 @@ class SettingsConfigurable : Configurable {
             modelListModel.addElement(CheckableModel(name, selected = true))
             manualModelField.text = ""
         }
+
+        /** 测试当前配置的连通性（后台发一条最小请求，模型取第一个已勾选项，未勾选时取列表第一项） */
+        private fun testConnection() {
+            val baseUrl = baseUrlField.text.trim()
+            if (baseUrl.isEmpty()) {
+                Messages.showWarningDialog(
+                    contentPanel,
+                    CodeSenseBundle.message("settings.test.warn.config"),
+                    CodeSenseBundle.message("settings.addProvider.title"),
+                )
+                return
+            }
+            val model = firstCheckedModelName() ?: firstModelName()
+            if (model == null) {
+                Messages.showWarningDialog(
+                    contentPanel,
+                    CodeSenseBundle.message("settings.test.warn.config"),
+                    CodeSenseBundle.message("settings.addProvider.title"),
+                )
+                return
+            }
+            val key = String(apiKeyField.password)
+            if (key.isBlank()) {
+                Messages.showWarningDialog(
+                    contentPanel,
+                    CodeSenseBundle.message("settings.test.warn.key"),
+                    CodeSenseBundle.message("settings.addProvider.title"),
+                )
+                return
+            }
+            val provider = AiProviderConfig(
+                id = "test",
+                providerId = "test",
+                displayName = nameField.text.trim(),
+                baseUrl = baseUrl,
+                model = model,
+            )
+            val startedAt = System.currentTimeMillis()
+            val taskTitle = CodeSenseBundle.message("settings.test.progress", provider.displayName)
+            object : Task.Backgroundable(null, taskTitle, true) {
+                override fun run(indicator: ProgressIndicator) {
+                    val reply = try {
+                        OpenAiCompatClient().chat(
+                            provider, key,
+                            listOf(ChatMessage("user", "Reply with just the word 'OK'.")),
+                        )
+                    } catch (e: Exception) {
+                        ApplicationManager.getApplication().invokeLater {
+                            Messages.showErrorDialog(
+                                contentPanel,
+                                CodeSenseBundle.message("notification.testFail", e.message ?: ""),
+                                CodeSenseBundle.message("settings.addProvider.title"),
+                            )
+                        }
+                        return
+                    }
+                    val elapsed = System.currentTimeMillis() - startedAt
+                    ApplicationManager.getApplication().invokeLater {
+                        Messages.showInfoMessage(
+                            contentPanel,
+                            CodeSenseBundle.message("notification.testSuccess", elapsed.toString(), reply.take(50)),
+                            CodeSenseBundle.message("settings.addProvider.title"),
+                        )
+                    }
+                }
+            }.queue()
+        }
+
+        /** 第一个已勾选的模型名；无勾选返回 null */
+        private fun firstCheckedModelName(): String? =
+            (0 until modelListModel.size())
+                .map { modelListModel.getElementAt(it) }
+                .firstOrNull { it.selected }
+                ?.name
+
+        /** 模型列表第一项的名字；列表为空返回 null */
+        private fun firstModelName(): String? =
+            if (modelListModel.size() > 0) modelListModel.getElementAt(0).name else null
 
         /** 通过 API（GET {baseUrl}/models）获取模型列表 */
         private fun fetchModels() {
@@ -626,6 +733,15 @@ class SettingsConfigurable : Configurable {
                 )
                 return
             }
+            val baseUrl = baseUrlField.text.trim()
+            if (baseUrl.isEmpty()) {
+                Messages.showWarningDialog(
+                    contentPanel,
+                    CodeSenseBundle.message("settings.baseUrl.empty"),
+                    CodeSenseBundle.message("settings.addProvider.title"),
+                )
+                return
+            }
             val selectedModels = (0 until modelListModel.size())
                 .map { modelListModel.getElementAt(it) }
                 .filter { it.selected }
@@ -640,7 +756,6 @@ class SettingsConfigurable : Configurable {
             val preset = presetCombo.selectedItem as? ProviderPreset
             val providerId = if (preset != null && preset.id != "__custom__") preset.id else "custom-${UUID.randomUUID()}"
             val planType = planTypeCombo.selectedItem as? ProviderPlanType ?: ProviderPlanType.PAY_AS_YOU_GO
-            val baseUrl = baseUrlField.text.trim()
             val seen = mutableSetOf<String>()
             resultConfigs = selectedModels.map { m ->
                 var id = "$providerId:${m.name}"
@@ -659,6 +774,168 @@ class SettingsConfigurable : Configurable {
         }
     }
 
+    // ---- 标签面板组件（chip 风格，最多 3 个） ----
+
+    /**
+     * 标签编辑面板：以 chip（圆角边框标签）形式展示标签，右侧"+"按钮添加，最多 [MAX_TAGS] 个。
+     * 每个 chip 带"×"删除按钮，点击即可移除。
+     */
+    private class TagsPanel : JPanel(FlowLayout(FlowLayout.LEFT, 4, 2)) {
+
+        companion object {
+            const val MAX_TAGS = 3
+        }
+
+        private val tags = mutableListOf<String>()
+
+        /** 内联输入行（输入框 + 确认 + 取消），默认隐藏 */
+        private val inlineInput = JTextField(10).apply {
+            toolTipText = CodeSenseBundle.message("settings.editProvider.tags.placeholder")
+        }
+        private val confirmButton = JButton(AllIcons.Actions.Commit).apply {
+            toolTipText = CodeSenseBundle.message("settings.addProvider.confirm")
+            isFocusable = false
+            margin = JBUI.insets(2)
+            addActionListener { commitInlineInput() }
+        }
+        private val cancelButton = JButton(AllIcons.Actions.Close).apply {
+            toolTipText = CodeSenseBundle.message("settings.addProvider.cancel")
+            isFocusable = false
+            margin = JBUI.insets(2)
+            addActionListener { hideInlineInput() }
+        }
+        private val inlinePanel = JPanel(FlowLayout(FlowLayout.LEFT, 2, 0)).apply {
+            isVisible = false
+            add(inlineInput)
+            add(confirmButton)
+            add(cancelButton)
+        }
+
+        private val addButton = JButton(AllIcons.General.Add).apply {
+            toolTipText = CodeSenseBundle.message("settings.editProvider.tags.add")
+            isFocusable = false
+            margin = JBUI.insets(2)
+            addActionListener { showInlineInput() }
+        }
+
+        init {
+            // Enter 确认、Escape 取消
+            inlineInput.addActionListener { commitInlineInput() }
+            inlineInput.addKeyListener(object : java.awt.event.KeyAdapter() {
+                override fun keyPressed(e: java.awt.event.KeyEvent) {
+                    if (e.keyCode == java.awt.event.KeyEvent.VK_ESCAPE) {
+                        hideInlineInput()
+                    }
+                }
+            })
+            rebuildChips()
+        }
+
+        fun getTags(): List<String> = tags.toList()
+
+        fun setTags(list: List<String>) {
+            tags.clear()
+            tags.addAll(list.take(MAX_TAGS))
+            rebuildChips()
+        }
+
+        /** 重建所有 chip + 内联面板 + 添加按钮 */
+        private fun rebuildChips() {
+            removeAll()
+            // 添加已有标签 chip
+            tags.forEachIndexed { index, tag ->
+                add(createChip(tag, index))
+            }
+            // 添加按钮（未满时显示）
+            if (tags.size < MAX_TAGS) {
+                add(addButton)
+            }
+            // 内联输入行
+            add(inlinePanel)
+            revalidate()
+            repaint()
+        }
+
+        /** 创建单个 chip 组件：文字 + "×" 按钮 */
+        private fun createChip(text: String, index: Int): JComponent {
+            val chip = JPanel(FlowLayout(FlowLayout.LEFT, 3, 0)).apply {
+                isOpaque = false
+                border = ChipBorder()
+            }
+            val label = JBLabel(text).apply {
+                font = font.deriveFont(Font.PLAIN, 11f)
+            }
+            val removeButton = JButton(AllIcons.Actions.Close).apply {
+                isFocusable = false
+                isBorderPainted = false
+                isContentAreaFilled = false
+                margin = JBUI.insets(0)
+                preferredSize = Dimension(14, 14)
+                toolTipText = CodeSenseBundle.message("settings.action.delete")
+                addActionListener {
+                    if (index < tags.size) {
+                        tags.removeAt(index)
+                        rebuildChips()
+                    }
+                }
+            }
+            chip.add(label)
+            chip.add(removeButton)
+            return chip
+        }
+
+        private fun showInlineInput() {
+            inlineInput.text = ""
+            inlinePanel.isVisible = true
+            addButton.isVisible = false
+            revalidate()
+            repaint()
+            inlineInput.requestFocusInWindow()
+        }
+
+        private fun hideInlineInput() {
+            inlinePanel.isVisible = false
+            addButton.isVisible = tags.size < MAX_TAGS
+            revalidate()
+            repaint()
+        }
+
+        private fun commitInlineInput() {
+            val value = inlineInput.text.trim()
+            if (value.isNotEmpty() && value !in tags && tags.size < MAX_TAGS) {
+                tags.add(value)
+            }
+            hideInlineInput()
+            rebuildChips()
+        }
+
+        /** Chip 圆角边框 */
+        private class ChipBorder : javax.swing.border.AbstractBorder() {
+            override fun paintBorder(
+                c: Component?, g: java.awt.Graphics?,
+                x: Int, y: Int, width: Int, height: Int,
+            ) {
+                val g2 = g as java.awt.Graphics2D
+                g2.setRenderingHint(
+                    java.awt.RenderingHints.KEY_ANTIALIASING,
+                    java.awt.RenderingHints.VALUE_ANTIALIAS_ON,
+                )
+                // 灰色填充背景
+                g2.color = JBColor(0xF5F5F5, 0x454545)
+                g2.fillRoundRect(x, y, width - 1, height - 1, ARC, ARC)
+                // 边框线
+                g2.color = JBColor.border()
+                g2.drawRoundRect(x, y, width - 1, height - 1, ARC, ARC)
+            }
+
+            override fun getBorderInsets(c: Component?) = JBUI.insets(3, 7, 3, 7)
+
+            companion object {
+                private const val ARC = 10
+            }
+        }
+    }
+
     // ---- 编辑模型对话框 ----
 
     /**
@@ -672,12 +949,18 @@ class SettingsConfigurable : Configurable {
 
         private val modelDisplayNameField = JTextField(30)
         private val modelCombo = JComboBox<String>().apply { isEditable = true }
-        private val tagsField = JTextField(30)
+        private val fetchModelButton = JButton(CodeSenseBundle.message("settings.editProvider.fetchModels")).apply {
+            addActionListener { fetchModels() }
+        }
+        private val tagsPanel = TagsPanel()
         private val providerNameField = JTextField(30)
         private val planTypeCombo = JComboBox<ProviderPlanType>()
         private val baseUrlField = JTextField(30)
         private val apiKeyField = JBPasswordField()
         private val enabledCheckbox = JCheckBox(CodeSenseBundle.message("settings.editProvider.enabled"))
+        private val testButton = JButton(CodeSenseBundle.message("settings.testConnection")).apply {
+            addActionListener { testConnection() }
+        }
 
         var resultConfig: AiProviderConfig? = null
             private set
@@ -692,6 +975,8 @@ class SettingsConfigurable : Configurable {
             setCancelButtonText(CodeSenseBundle.message("settings.addProvider.cancel"))
             loadInitial()
             init()
+            // 设置弹窗最小宽度
+            window.minimumSize = Dimension(500, 300)
         }
 
         override fun createCenterPanel(): JComponent {
@@ -704,21 +989,59 @@ class SettingsConfigurable : Configurable {
                 }, BorderLayout.SOUTH)
             }
 
-            val testButton = JButton(CodeSenseBundle.message("settings.testConnection")).apply {
-                addActionListener { testConnection() }
+            // 模型下拉 + 「获取模型」按钮
+            val modelRow = JPanel(BorderLayout(4, 0)).apply {
+                add(modelCombo, BorderLayout.CENTER)
+                add(fetchModelButton, BorderLayout.EAST)
+            }
+
+            // 标签提示（最多 N 个）
+            val tagsHintLabel = JBLabel(CodeSenseBundle.message("settings.editProvider.tags.max", TagsPanel.MAX_TAGS.toString())).apply {
+                font = font.deriveFont(Font.PLAIN, 10f)
+                foreground = JBColor.GRAY
+                border = JBUI.Borders.empty(2, 0, 0, 0)
+            }
+
+            val tagsWithHint = JPanel(BorderLayout()).apply {
+                add(tagsPanel, BorderLayout.NORTH)
+                add(tagsHintLabel, BorderLayout.SOUTH)
             }
 
             return FormBuilder.createFormBuilder()
                 .addLabeledComponent(JLabel(CodeSenseBundle.message("settings.editProvider.displayName")), modelDisplayNameField)
-                .addLabeledComponent(JLabel(CodeSenseBundle.message("settings.editProvider.model")), modelCombo)
-                .addLabeledComponent(JLabel(CodeSenseBundle.message("settings.editProvider.tags")), tagsField)
-                .addLabeledComponent(JLabel(CodeSenseBundle.message("settings.provider")), providerNameField)
+                .addVerticalGap(6)
+                .addLabeledComponent(JLabel(SettingsConfigurable.requiredLabel("settings.editProvider.model")), modelRow)
+                .addVerticalGap(6)
+                .addLabeledComponent(JLabel(CodeSenseBundle.message("settings.editProvider.tags")), tagsWithHint)
+                .addVerticalGap(6)
+                .addLabeledComponent(JLabel(SettingsConfigurable.requiredLabel("settings.provider")), providerNameField)
+                .addVerticalGap(6)
                 .addLabeledComponent(JLabel(CodeSenseBundle.message("settings.planType")), planTypeCombo)
-                .addLabeledComponent(JLabel(CodeSenseBundle.message("settings.baseUrl")), baseUrlWithNote)
+                .addVerticalGap(6)
+                .addLabeledComponent(JLabel(SettingsConfigurable.requiredLabel("settings.baseUrl")), baseUrlWithNote)
+                .addVerticalGap(6)
                 .addLabeledComponent(JLabel(CodeSenseBundle.message("settings.apiKey")), apiKeyField)
-                .addComponent(enabledCheckbox)
-                .addComponent(testButton)
+                .addVerticalGap(6)
+                .addLabeledComponent(JLabel(), enabledCheckbox)
                 .panel
+        }
+
+        /** 在底部按钮行「确定」左侧插入测试连接按钮，保持按钮间距与其他按钮一致 */
+        override fun createSouthPanel(): JComponent {
+            val south = super.createSouthPanel()
+            val okButton = getButton(getOKAction()) ?: return south
+            val container = okButton.parent ?: return south
+            if (container.components.none { it === testButton }) {
+                container.add(testButton, 0)
+                // 与平台 BASE_BUTTON_GAP=12 的间距算法保持一致
+                val insets = testButton.insets ?: JBUI.insets(0)
+                val gap = JBUI.scale(12) - insets.left - insets.right
+                if (gap > 0) {
+                    container.add(javax.swing.Box.createRigidArea(Dimension(gap, 0)), 1)
+                }
+                container.revalidate()
+            }
+            return south
         }
 
         private fun loadInitial() {
@@ -733,7 +1056,7 @@ class SettingsConfigurable : Configurable {
             if (initialConfig.model.isNotBlank()) models.add(initialConfig.model)
             modelCombo.model = DefaultComboBoxModel(models.toTypedArray())
             modelCombo.selectedItem = initialConfig.model
-            tagsField.text = initialConfig.tags.joinToString(", ")
+            tagsPanel.setTags(initialConfig.tags)
             providerNameField.text = initialConfig.displayName
             apiKeyField.text = initialApiKey ?: ""
             enabledCheckbox.isSelected = initialConfig.enabled
@@ -807,6 +1130,60 @@ class SettingsConfigurable : Configurable {
             }.queue()
         }
 
+        /** 通过 API（GET {baseUrl}/models）获取模型列表 */
+        private fun fetchModels() {
+            val baseUrl = baseUrlField.text.trim()
+            if (baseUrl.isEmpty()) {
+                Messages.showWarningDialog(
+                    contentPanel,
+                    CodeSenseBundle.message("settings.test.warn.config"),
+                    CodeSenseBundle.message("settings.editProvider.title"),
+                )
+                return
+            }
+            val key = String(apiKeyField.password)
+            if (key.isBlank()) {
+                Messages.showWarningDialog(
+                    contentPanel,
+                    CodeSenseBundle.message("settings.test.warn.key"),
+                    CodeSenseBundle.message("settings.editProvider.title"),
+                )
+                return
+            }
+            val provider = AiProviderConfig(
+                id = "fetch",
+                providerId = "fetch",
+                displayName = providerNameField.text.trim(),
+                baseUrl = baseUrl,
+                model = "",
+            )
+            val taskTitle = CodeSenseBundle.message("settings.editProvider.fetchingModels")
+            object : Task.Backgroundable(null, taskTitle, true) {
+                override fun run(indicator: ProgressIndicator) {
+                    val models = try {
+                        OpenAiCompatClient().listModels(provider, key)
+                    } catch (e: Exception) {
+                        ApplicationManager.getApplication().invokeLater {
+                            Messages.showWarningDialog(
+                                contentPanel,
+                                CodeSenseBundle.message("settings.editProvider.fetchFail", e.message ?: ""),
+                                CodeSenseBundle.message("settings.editProvider.title"),
+                            )
+                        }
+                        return
+                    }
+                    ApplicationManager.getApplication().invokeLater {
+                        modelCombo.model = DefaultComboBoxModel(models.toTypedArray())
+                        Messages.showInfoMessage(
+                            contentPanel,
+                            CodeSenseBundle.message("settings.editProvider.fetchSuccess", models.size.toString()),
+                            CodeSenseBundle.message("settings.editProvider.title"),
+                        )
+                    }
+                }
+            }.queue()
+        }
+
         override fun doOKAction() {
             val model = (modelCombo.editor.item as? String ?: "").trim()
             val providerName = providerNameField.text.trim()
@@ -826,14 +1203,23 @@ class SettingsConfigurable : Configurable {
                 )
                 return
             }
-            val tags = tagsField.text.split(",").map { it.trim() }.filter { it.isNotEmpty() }.toMutableList()
+            val baseUrl = baseUrlField.text.trim()
+            if (baseUrl.isEmpty()) {
+                Messages.showWarningDialog(
+                    contentPanel,
+                    CodeSenseBundle.message("settings.baseUrl.empty"),
+                    CodeSenseBundle.message("settings.editProvider.title"),
+                )
+                return
+            }
+            val tags = tagsPanel.getTags().toMutableList()
             resultConfig = initialConfig.copy(
                 modelDisplayName = modelDisplayNameField.text.trim(),
                 model = model,
                 tags = tags,
                 displayName = providerName,
                 planType = planTypeCombo.selectedItem as? ProviderPlanType ?: ProviderPlanType.PAY_AS_YOU_GO,
-                baseUrl = baseUrlField.text.trim(),
+                baseUrl = baseUrl,
                 enabled = enabledCheckbox.isSelected,
             )
             resultApiKey = String(apiKeyField.password)
@@ -1112,5 +1498,9 @@ class SettingsConfigurable : Configurable {
         fun open(project: Project?) {
             ShowSettingsUtil.getInstance().showSettingsDialog(project, SettingsConfigurable::class.java)
         }
+
+        /** 必填项 label 的 HTML 文本：文本末尾追加红色星号 */
+        fun requiredLabel(key: String): String =
+            "<html>${CodeSenseBundle.message(key)}<font color='red'>*</font></html>"
     }
 }
