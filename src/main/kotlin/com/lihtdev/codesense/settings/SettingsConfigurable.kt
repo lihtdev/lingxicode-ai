@@ -1067,7 +1067,7 @@ class SettingsConfigurable : Configurable {
         private const val COL_ACTION_W = 100
 
         // 表格固定尺寸
-        private const val TABLE_WIDTH = 730
+        private const val TABLE_WIDTH = 600
         private const val TABLE_HEIGHT = 200
 
         /** 打开设置页（供外部跳转） */
