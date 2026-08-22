@@ -153,8 +153,9 @@ class SettingsConfigurable : Configurable {
             font = font.deriveFont(Font.PLAIN, 20f)
             // 不显式设置前景色：与英文名一致，继承主题默认文字颜色
         }
-        val nameRow = JPanel(FlowLayout(FlowLayout.LEFT, 10, 0)).apply {
+        val nameRow = JPanel(FlowLayout(FlowLayout.LEFT, 0, 0)).apply {
             add(englishLabel)
+            add(javax.swing.Box.createHorizontalStrut(10))
             add(chineseLabel)
         }
         // BoxLayout(Y_AXIS) 下默认居中，需显式左对齐（第二行同理）
@@ -1059,15 +1060,15 @@ class SettingsConfigurable : Configurable {
         private const val ACTION_ICON_W = 26
 
         // 列固定宽度
-        private const val COL_DISPLAY_NAME_W = 170
+        private const val COL_DISPLAY_NAME_W = 200
         private const val COL_MODEL_W = 200
         private const val COL_TAGS_W = 140
         private const val COL_PROVIDER_W = 130
         private const val COL_ACTION_W = 100
 
         // 表格固定尺寸
-        private const val TABLE_WIDTH = 700
-        private const val TABLE_HEIGHT = 300
+        private const val TABLE_WIDTH = 730
+        private const val TABLE_HEIGHT = 200
 
         /** 打开设置页（供外部跳转） */
         fun open(project: Project?) {
