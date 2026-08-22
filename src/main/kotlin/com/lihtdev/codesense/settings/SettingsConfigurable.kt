@@ -450,7 +450,7 @@ class SettingsConfigurable : Configurable {
             onPresetSelected()
             init()
             // 设置弹窗最小宽度
-            window.minimumSize = Dimension(500, 300)
+            window.minimumSize = Dimension(600, 600)
         }
 
         override fun createCenterPanel(): JComponent {
@@ -976,7 +976,7 @@ class SettingsConfigurable : Configurable {
             loadInitial()
             init()
             // 设置弹窗最小宽度
-            window.minimumSize = Dimension(500, 300)
+            window.minimumSize = Dimension(600, 600)
         }
 
         override fun createCenterPanel(): JComponent {
