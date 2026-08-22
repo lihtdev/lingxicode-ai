@@ -145,40 +145,78 @@ class SettingsConfigurable : Configurable {
             layout = javax.swing.BoxLayout(this, javax.swing.BoxLayout.Y_AXIS)
         }
 
-        // 第一行：英文名 + 中文名（同一行，字号一致）
+        // 第一行：英文名 + 中文名 + 版本号（同一行，字号一致）
         val englishLabel = JLabel(CodeSenseBundle.message("settings.header.englishName")).apply {
             font = font.deriveFont(Font.BOLD, 20f)
         }
         val chineseLabel = JLabel(CodeSenseBundle.message("settings.header.chineseName")).apply {
             font = font.deriveFont(Font.PLAIN, 20f)
-            // 不显式设置前景色：与英文名一致，继承主题默认文字颜色
         }
-        val nameRow = JPanel(FlowLayout(FlowLayout.LEFT, 0, 0)).apply {
-            add(englishLabel)
-            add(javax.swing.Box.createHorizontalStrut(10))
-            add(chineseLabel)
-        }
-        // BoxLayout(Y_AXIS) 下默认居中，需显式左对齐（第二行同理）
-        nameRow.alignmentX = Component.LEFT_ALIGNMENT
-
-        // 第二行：版本 + 作者
         val version = try {
             PluginManagerCore.getPlugin(PluginId.getId("com.lihtdev.codesense"))?.version ?: "0.1.0"
         } catch (_: Exception) {
             "0.1.0"
         }
-        val metaLabel = JLabel(
-            "${CodeSenseBundle.message("settings.header.version", version)}  |  ${CodeSenseBundle.message("settings.header.author")}",
-        ).apply {
+        val versionLabel = JLabel(" v$version ").apply {
+            font = font.deriveFont(Font.PLAIN, 12f)
+            foreground = JBColor.GRAY
+            border = object : javax.swing.border.AbstractBorder() {
+                override fun paintBorder(c: Component?, g: java.awt.Graphics?, x: Int, y: Int, width: Int, height: Int) {
+                    val g2 = g as java.awt.Graphics2D
+                    g2.setRenderingHint(java.awt.RenderingHints.KEY_ANTIALIASING, java.awt.RenderingHints.VALUE_ANTIALIAS_ON)
+                    g2.color = JBColor.GRAY
+                    g2.drawRoundRect(x, y, width - 1, height - 1, 8, 8)
+                }
+                override fun getBorderInsets(c: Component?) = java.awt.Insets(2, 5, 2, 5)
+            }
+        }
+        val nameRow = JPanel(FlowLayout(FlowLayout.LEFT, 0, 0)).apply {
+            add(englishLabel)
+            add(javax.swing.Box.createHorizontalStrut(10))
+            add(chineseLabel)
+            add(javax.swing.Box.createHorizontalStrut(10))
+            add(versionLabel)
+        }
+        // BoxLayout(Y_AXIS) 下默认居中，需显式左对齐（第二行同理）
+        nameRow.alignmentX = Component.LEFT_ALIGNMENT
+
+        // 第二行：用户图标 + 作者 + 分隔符 + GitHub 图标 + 链接
+        val authorIcon = JLabel(IconLoader.getIcon("/icons/user.svg", SettingsConfigurable::class.java)).apply {
+            border = JBUI.Borders.emptyRight(3)
+        }
+        val authorLabel = JLabel(CodeSenseBundle.message("settings.header.author")).apply {
             font = font.deriveFont(Font.PLAIN, 12f)
             foreground = JBColor.GRAY
         }
-        // 第二行（版本/作者）与名称行左对齐
-        metaLabel.alignmentX = Component.LEFT_ALIGNMENT
+        val separator = JLabel(" | ").apply {
+            font = font.deriveFont(Font.PLAIN, 12f)
+            foreground = JBColor.GRAY
+            border = JBUI.Borders.empty(0, 6, 0, 6)
+        }
+        val githubIcon = JLabel(IconLoader.getIcon("/icons/github.svg", SettingsConfigurable::class.java)).apply {
+            border = JBUI.Borders.emptyRight(3)
+        }
+        val githubLink = JLabel("<html><a href=\"\">https://github.com/lihtdev</a></html>").apply {
+            font = font.deriveFont(Font.PLAIN, 12f)
+            cursor = java.awt.Cursor.getPredefinedCursor(java.awt.Cursor.HAND_CURSOR)
+            addMouseListener(object : MouseAdapter() {
+                override fun mouseClicked(e: MouseEvent) {
+                    com.intellij.ide.BrowserUtil.browse("https://github.com/lihtdev")
+                }
+            })
+        }
+        val metaRow = JPanel(FlowLayout(FlowLayout.LEFT, 0, 0)).apply {
+            add(authorIcon)
+            add(authorLabel)
+            add(separator)
+            add(githubIcon)
+            add(githubLink)
+        }
+        metaRow.alignmentX = Component.LEFT_ALIGNMENT
 
         textPanel.add(nameRow)
-        textPanel.add(javax.swing.Box.createVerticalStrut(4))
-        textPanel.add(metaLabel)
+        textPanel.add(javax.swing.Box.createVerticalStrut(6))
+        textPanel.add(metaRow)
 
         val leftPanel = JPanel(FlowLayout(FlowLayout.LEFT, 0, 0)).apply {
             add(iconLabel)
