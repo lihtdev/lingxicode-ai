@@ -1,5 +1,6 @@
 package com.lihtdev.codesense.settings
 
+import com.intellij.icons.AllIcons
 import com.intellij.openapi.options.Configurable
 import com.intellij.openapi.options.ShowSettingsUtil
 import com.intellij.openapi.progress.ProgressIndicator
@@ -7,25 +8,39 @@ import com.intellij.openapi.progress.Task
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.project.ProjectManager
 import com.intellij.openapi.ui.Messages
+import com.intellij.ui.CollectionListModel
+import com.intellij.ui.JBColor
+import com.intellij.ui.ToolbarDecorator
+import com.intellij.ui.components.JBLabel
+import com.intellij.ui.components.JBList
 import com.intellij.ui.components.JBPasswordField
 import com.intellij.util.ui.FormBuilder
+import com.intellij.util.ui.JBUI
 import com.lihtdev.codesense.ai.AiClientException
 import com.lihtdev.codesense.ai.ChatMessage
 import com.lihtdev.codesense.ai.OpenAiCompatClient
 import com.lihtdev.codesense.i18n.CodeSenseBundle
+import java.awt.BorderLayout
 import java.awt.Component
+import java.awt.FlowLayout
+import java.awt.Font
 import java.util.UUID
 import javax.swing.DefaultComboBoxModel
+import javax.swing.Icon
+import javax.swing.ImageIcon
 import javax.swing.JButton
 import javax.swing.JComboBox
 import javax.swing.JComponent
 import javax.swing.JLabel
 import javax.swing.JPanel
 import javax.swing.ListCellRenderer
+import javax.swing.ListSelectionModel
+import javax.swing.SwingConstants
 
 /**
  * 设置页（Tools → CodeSense AI）。
- * 厂商下拉 + 类型下拉（自动带出 baseUrl）+ baseUrl / model（可编辑下拉）/ API Key，
+ *
+ * 布局：顶部品牌区 → 中部主从列表（厂商列表 + 详情编辑）→ 底部全局设置。
  * 支持「添加自定义」「删除」「测试连接」，以及输出语言、UI 语言与 diff 上限。
  */
 class SettingsConfigurable : Configurable {
@@ -41,11 +56,19 @@ class SettingsConfigurable : Configurable {
     private var isLoading = false
 
     // ---- UI 组件 ----
-    private val providerCombo = JComboBox<AiProviderConfig>()
+    // 厂商列表
+    private val providerListModel = CollectionListModel<AiProviderConfig>()
+    private val providerList = JBList(providerListModel)
+    private lateinit var providerListPanel: JPanel
+
+    // 详情编辑区
     private val planCombo = JComboBox<ProviderPlanType>()
     private val baseUrlField = javax.swing.JTextField()
     private val modelCombo = JComboBox<String>()
     private val apiKeyField = JBPasswordField()
+    private val detailPanel: JPanel
+
+    // 全局设置
     private val outputLanguageCombo = JComboBox(
         arrayOf(
             CodeSenseBundle.message("settings.language.zh"),
@@ -62,33 +85,37 @@ class SettingsConfigurable : Configurable {
     private val mainPanel: JComponent
 
     init {
-        providerCombo.renderer = ProviderRenderer()
-        planCombo.renderer = PlanRenderer()
-
-        val buttonPanel = JPanel(java.awt.FlowLayout(java.awt.FlowLayout.LEFT)).apply {
-            add(JButton(CodeSenseBundle.message("settings.addCustom")).apply {
-                addActionListener { addCustomProvider() }
-            })
-            add(JButton(CodeSenseBundle.message("settings.deleteCurrent")).apply {
-                addActionListener { removeCurrentProvider() }
-            })
-            add(JButton(CodeSenseBundle.message("settings.testConnection")).apply {
-                addActionListener { testConnection() }
-            })
+        // 厂商列表外观
+        providerList.selectionMode = ListSelectionModel.SINGLE_SELECTION
+        providerList.cellRenderer = ProviderListRenderer()
+        providerList.addListSelectionListener {
+            if (!isLoading && !it.valueIsAdjusting) {
+                onProviderSelected()
+            }
         }
 
-        modelCombo.isEditable = true
-
-        providerCombo.addActionListener { onProviderSelected() }
+        // 类型下拉
+        planCombo.renderer = PlanRenderer()
         planCombo.addActionListener { onPlanChanged() }
 
-        mainPanel = FormBuilder.createFormBuilder()
-            .addLabeledComponent(JLabel(CodeSenseBundle.message("settings.provider")), providerCombo)
+        // 模型可编辑下拉
+        modelCombo.isEditable = true
+
+        // 详情编辑区面板
+        detailPanel = FormBuilder.createFormBuilder()
             .addLabeledComponent(JLabel(CodeSenseBundle.message("settings.planType")), planCombo)
             .addLabeledComponent(JLabel(CodeSenseBundle.message("settings.baseUrl")), baseUrlField)
             .addLabeledComponent(JLabel(CodeSenseBundle.message("settings.model")), modelCombo)
             .addLabeledComponent(JLabel(CodeSenseBundle.message("settings.apiKey")), apiKeyField)
-            .addComponent(buttonPanel)
+            .addComponent(createDetailButtonPanel())
+            .addComponentFillVertically(JPanel(), 0)
+            .panel
+
+        // 组装主面板
+        mainPanel = FormBuilder.createFormBuilder()
+            .addComponent(createHeaderPanel())
+            .addSeparator()
+            .addComponent(createMasterDetailPanel())
             .addSeparator()
             .addLabeledComponent(JLabel(CodeSenseBundle.message("settings.outputLanguage")), outputLanguageCombo)
             .addLabeledComponent(JLabel(CodeSenseBundle.message("settings.uiLanguage")), uiLanguageCombo)
@@ -97,6 +124,104 @@ class SettingsConfigurable : Configurable {
             .panel
 
         reset()
+    }
+
+    // ---- 子面板构建 ----
+
+    /** 顶部品牌区：Logo + 英文名 + 中文名 */
+    private fun createHeaderPanel(): JPanel {
+        val panel = JPanel(BorderLayout())
+        panel.border = JBUI.Borders.emptyBottom(8)
+
+        // 图标（放大到 40×40）
+        val icon = loadPluginIcon(40)
+        val iconLabel = JLabel(icon).apply {
+            border = JBUI.Borders.emptyRight(12)
+        }
+
+        // 文字区域
+        val textPanel = JPanel().apply {
+            layout = javax.swing.BoxLayout(this, javax.swing.BoxLayout.Y_AXIS)
+        }
+        val englishLabel = JLabel(CodeSenseBundle.message("settings.header.englishName")).apply {
+            font = font.deriveFont(Font.BOLD, 16f)
+        }
+        val chineseLabel = JLabel(CodeSenseBundle.message("settings.header.chineseName")).apply {
+            font = font.deriveFont(Font.PLAIN, 13f)
+            foreground = JBColor.GRAY
+        }
+        textPanel.add(englishLabel)
+        textPanel.add(chineseLabel)
+
+        val leftPanel = JPanel(FlowLayout(FlowLayout.LEFT, 0, 0)).apply {
+            add(iconLabel)
+            add(textPanel)
+        }
+
+        panel.add(leftPanel, BorderLayout.WEST)
+        return panel
+    }
+
+    /** 主从布局：左侧厂商列表 + 右侧详情编辑 */
+    private fun createMasterDetailPanel(): JPanel {
+        // 左侧：厂商列表 + 增删按钮
+        val listTitle = JLabel(CodeSenseBundle.message("settings.providerList.title")).apply {
+            font = Font(font.name, Font.BOLD, font.size)
+        }
+
+        val addButton = JButton(CodeSenseBundle.message("settings.addCustom")).apply {
+            addActionListener { addCustomProvider() }
+        }
+        val deleteButton = JButton(CodeSenseBundle.message("settings.deleteCurrent")).apply {
+            addActionListener { removeCurrentProvider() }
+        }
+
+        val buttonRow = JPanel(FlowLayout(FlowLayout.LEFT, 4, 0)).apply {
+            add(addButton)
+            add(deleteButton)
+        }
+
+        val listScrollPane = javax.swing.JScrollPane(providerList).apply {
+            preferredSize = java.awt.Dimension(180, 220)
+        }
+
+        val leftPanel = JPanel(BorderLayout()).apply {
+            border = JBUI.Borders.emptyRight(12)
+            add(listTitle, BorderLayout.NORTH)
+            add(listScrollPane, BorderLayout.CENTER)
+            add(buttonRow, BorderLayout.SOUTH)
+        }
+
+        // 右侧：详情编辑区
+        val rightPanel = JPanel(BorderLayout()).apply {
+            add(detailPanel, BorderLayout.CENTER)
+        }
+
+        val splitPanel = JPanel(BorderLayout()).apply {
+            add(leftPanel, BorderLayout.WEST)
+            add(rightPanel, BorderLayout.CENTER)
+        }
+        return splitPanel
+    }
+
+    /** 详情编辑区按钮行 */
+    private fun createDetailButtonPanel(): JPanel {
+        return JPanel(FlowLayout(FlowLayout.LEFT)).apply {
+            add(JButton(CodeSenseBundle.message("settings.testConnection")).apply {
+                addActionListener { testConnection() }
+            })
+        }
+    }
+
+    /** 加载图标并缩放 */
+    private fun loadPluginIcon(size: Int): Icon {
+        val url = SettingsConfigurable::class.java.getResource("/icons/codesense.svg")
+        if (url != null) {
+            val imageIcon = ImageIcon(url)
+            val scaled = imageIcon.image.getScaledInstance(size, size, java.awt.Image.SCALE_SMOOTH)
+            return ImageIcon(scaled)
+        }
+        return AllIcons.General.Web
     }
 
     // ---- Configurable 实现 ----
@@ -141,18 +266,21 @@ class SettingsConfigurable : Configurable {
         outputLanguageCombo.selectedIndex = if (state.outputLanguage == "en") 1 else 0
         uiLanguageCombo.selectedIndex = if (state.uiLanguage == "en") 1 else 0
         maxDiffField.value = state.maxDiffChars
-        refreshProviderCombo()
+        refreshProviderList()
     }
 
     // ---- 内部逻辑 ----
 
-    /** 刷新厂商下拉并选中当前生效厂商 */
-    private fun refreshProviderCombo() {
+    /** 刷新厂商列表并选中当前生效厂商 */
+    private fun refreshProviderList() {
         isLoading = true
         try {
-            providerCombo.model = DefaultComboBoxModel(workingProviders.toTypedArray())
+            providerListModel.removeAll()
+            workingProviders.forEach { providerListModel.add(it) }
             val selected = workingProviders.firstOrNull { it.id == workingActiveId } ?: workingProviders.firstOrNull()
-            providerCombo.selectedItem = selected
+            if (selected != null) {
+                providerList.setSelectedValue(selected, true)
+            }
             loadFieldsForSelected()
         } finally {
             isLoading = false
@@ -162,14 +290,14 @@ class SettingsConfigurable : Configurable {
     private fun onProviderSelected() {
         if (isLoading) return
         syncUiToWorking()
-        val selected = providerCombo.selectedItem as? AiProviderConfig ?: return
+        val selected = providerList.selectedValue ?: return
         workingActiveId = selected.id
         loadFieldsForSelected()
     }
 
     /** 将当前 UI 字段同步回工作副本中选中的厂商 */
     private fun syncUiToWorking() {
-        val selected = providerCombo.selectedItem as? AiProviderConfig ?: return
+        val selected = providerList.selectedValue ?: return
         selected.baseUrl = baseUrlField.text.trim()
         selected.model = (modelCombo.editor.item as? String ?: "").trim()
         selected.planType = planCombo.selectedItem as? ProviderPlanType ?: selected.planType
@@ -178,7 +306,7 @@ class SettingsConfigurable : Configurable {
 
     /** 依据选中厂商加载类型/baseUrl/model/apiKey 字段 */
     private fun loadFieldsForSelected() {
-        val selected = providerCombo.selectedItem as? AiProviderConfig ?: return
+        val selected = providerList.selectedValue ?: return
         isLoading = true
         try {
             val preset = ProviderPresets.byId(selected.id)
@@ -202,7 +330,7 @@ class SettingsConfigurable : Configurable {
     /** 切换类型：预设厂商自动带出该类型对应的 baseUrl（可手动覆盖） */
     private fun onPlanChanged() {
         if (isLoading) return
-        val selected = providerCombo.selectedItem as? AiProviderConfig ?: return
+        val selected = providerList.selectedValue ?: return
         val planType = planCombo.selectedItem as? ProviderPlanType ?: return
         selected.planType = planType
         val preset = ProviderPresets.byId(selected.id) ?: return
@@ -229,14 +357,14 @@ class SettingsConfigurable : Configurable {
         )
         workingProviders.add(config)
         workingApiKeys[config.id] = null
-        refreshProviderCombo()
-        providerCombo.selectedItem = config
+        refreshProviderList()
+        providerList.setSelectedValue(config, true)
         loadFieldsForSelected()
     }
 
     /** 删除当前选中的自定义厂商（至少保留一个） */
     private fun removeCurrentProvider() {
-        val selected = providerCombo.selectedItem as? AiProviderConfig ?: return
+        val selected = providerList.selectedValue ?: return
         if (workingProviders.size <= 1) {
             Messages.showWarningDialog(
                 mainPanel,
@@ -250,13 +378,13 @@ class SettingsConfigurable : Configurable {
         if (workingActiveId == selected.id) {
             workingActiveId = workingProviders.first().id
         }
-        refreshProviderCombo()
+        refreshProviderList()
     }
 
     /** 测试当前配置的连通性（后台发一条最小请求） */
     private fun testConnection() {
         syncUiToWorking()
-        val provider = providerCombo.selectedItem as? AiProviderConfig ?: return
+        val provider = providerList.selectedValue ?: return
         if (provider.baseUrl.isBlank() || provider.model.isBlank()) {
             Messages.showWarningDialog(
                 mainPanel,
@@ -317,13 +445,15 @@ class SettingsConfigurable : Configurable {
 
     // ---- 渲染器 ----
 
-    private class ProviderRenderer : ListCellRenderer<Any?> {
+    /** 厂商列表渲染器：显示 displayName */
+    private class ProviderListRenderer : ListCellRenderer<Any?> {
         private val delegate = JLabel()
         override fun getListCellRendererComponent(
             list: javax.swing.JList<out Any?>, value: Any?, index: Int,
             isSelected: Boolean, cellHasFocus: Boolean,
         ): Component {
             delegate.text = (value as? AiProviderConfig)?.displayName ?: value.toString()
+            delegate.font = delegate.font.deriveFont(Font.PLAIN)
             if (isSelected) {
                 delegate.background = list.selectionBackground
                 delegate.foreground = list.selectionForeground
@@ -332,6 +462,7 @@ class SettingsConfigurable : Configurable {
                 delegate.foreground = list.foreground
             }
             delegate.isOpaque = true
+            delegate.border = JBUI.Borders.empty(4, 8)
             return delegate
         }
     }

@@ -26,6 +26,10 @@
                                  displayName="CodeSense AI"/>
         <!-- 通知组 -->
         <notificationGroup id="CodeSenseAI" displayType="BALLOON"/>
+        <!-- 状态栏模型切换器 -->
+        <statusBarWidgetFactory id="codesense.modelSwitcher"
+                                implementation="com.lihtdev.codesense.ui.ModelSwitcherWidgetFactory"
+                                order="after Encoding"/>
     </extensions>
 
     <!-- 预留的 AI 功能扩展点：后续新功能（如代码解释）经此注册 -->
