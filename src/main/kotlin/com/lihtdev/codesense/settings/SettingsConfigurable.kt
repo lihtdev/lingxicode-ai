@@ -51,6 +51,23 @@ import javax.swing.table.DefaultTableCellRenderer
 import javax.swing.table.TableCellRenderer
 
 /**
+ * chip 标签共用样式：设置页表格标签列 与 编辑弹窗标签面板 保持一致（填充/边框/圆角/内边距）。
+ */
+private object TagChipStyle {
+    /** chip 填充色（亮/暗主题） */
+    val background = JBColor(0xF5F5F5, 0x454545)
+
+    /** chip 圆角半径 */
+    const val ARC = 10
+
+    /** chip 水平内边距（文字两侧） */
+    const val H_PAD = 7
+
+    /** chip 垂直内边距（文字上下） */
+    const val V_PAD = 3
+}
+
+/**
  * 设置页（Tools → CodeSense AI）。
  *
  * 布局：顶部品牌区 → 模型表格（显示名称/模型/标签/提供商/操作）→ 底部全局设置。
@@ -68,6 +85,7 @@ class SettingsConfigurable : Configurable {
     // ---- UI 组件 ----
     private val tableModel = ModelTableModel()
     private val actionRenderer = ActionCellRenderer()
+    private val tagsRenderer = TagsCellRenderer()
     private val table = ModelTable(tableModel, actionRenderer)
 
     // 全局设置
@@ -97,11 +115,11 @@ class SettingsConfigurable : Configurable {
         setFixedColumnWidth(2, COL_TAGS_W)
         setFixedColumnWidth(3, COL_PROVIDER_W)
         setFixedColumnWidth(4, COL_ACTION_W)
-        // 数据列：停用行灰色 + hover 高亮
+        // 数据列：停用行灰色 + hover 高亮（标签列改用 chip 渲染器）
         val dataRenderer = GrayRowRenderer(tableModel)
         table.columnModel.getColumn(0).cellRenderer = dataRenderer
         table.columnModel.getColumn(1).cellRenderer = dataRenderer
-        table.columnModel.getColumn(2).cellRenderer = dataRenderer
+        table.columnModel.getColumn(TAGS_COLUMN).cellRenderer = tagsRenderer
         table.columnModel.getColumn(3).cellRenderer = dataRenderer
         // 操作列：图标按钮
         table.columnModel.getColumn(4).cellRenderer = actionRenderer
@@ -937,7 +955,7 @@ class SettingsConfigurable : Configurable {
             rebuildChips()
         }
 
-        /** Chip 圆角边框 */
+        /** Chip 圆角边框（样式见 [TagChipStyle]） */
         private class ChipBorder : javax.swing.border.AbstractBorder() {
             override fun paintBorder(
                 c: Component?, g: java.awt.Graphics?,
@@ -949,18 +967,15 @@ class SettingsConfigurable : Configurable {
                     java.awt.RenderingHints.VALUE_ANTIALIAS_ON,
                 )
                 // 灰色填充背景
-                g2.color = JBColor(0xF5F5F5, 0x454545)
-                g2.fillRoundRect(x, y, width - 1, height - 1, ARC, ARC)
+                g2.color = TagChipStyle.background
+                g2.fillRoundRect(x, y, width - 1, height - 1, TagChipStyle.ARC, TagChipStyle.ARC)
                 // 边框线
                 g2.color = JBColor.border()
-                g2.drawRoundRect(x, y, width - 1, height - 1, ARC, ARC)
+                g2.drawRoundRect(x, y, width - 1, height - 1, TagChipStyle.ARC, TagChipStyle.ARC)
             }
 
-            override fun getBorderInsets(c: Component?) = JBUI.insets(3, 7, 3, 7)
-
-            companion object {
-                private const val ARC = 10
-            }
+            override fun getBorderInsets(c: Component?) =
+                JBUI.insets(TagChipStyle.V_PAD, TagChipStyle.H_PAD, TagChipStyle.V_PAD, TagChipStyle.H_PAD)
         }
     }
 
@@ -1321,7 +1336,7 @@ class SettingsConfigurable : Configurable {
             return when (columnIndex) {
                 0 -> p.modelDisplayName.ifBlank { p.model }
                 1 -> p.model
-                2 -> p.tags.joinToString(", ")
+                2 -> p
                 3 -> p.displayName
                 4 -> p
                 else -> null
@@ -1407,6 +1422,111 @@ class SettingsConfigurable : Configurable {
             // 停用行：置灰前景
             c.foreground = if (!model.isRowEnabled(row)) JBColor.GRAY else table.foreground
             return c
+        }
+    }
+
+    // ---- 标签列渲染器（chip 圆角边框样式 + 超宽截断省略号） ----
+
+    /**
+     * 标签列渲染器：把标签逐个绘制为带圆角边框的 chip。
+     * - 无标签：单元格留空；
+     * - 放不下：截断并绘制「…」，悬停时 tooltip 展示完整标签；
+     * - 停用行：chip 文本置灰；
+     * - hover 行：单元格背景高亮（与其它列一致）。
+     */
+    private class TagsCellRenderer : JComponent(), TableCellRenderer {
+
+        private var tags: List<String> = emptyList()
+        private var rowEnabled = true
+        private var hover = false
+        private var cellBackground: java.awt.Color = JBColor.background()
+        private var cellForeground: java.awt.Color = JBColor.foreground()
+
+        override fun getTableCellRendererComponent(
+            table: JTable, value: Any?, isSelected: Boolean, hasFocus: Boolean,
+            row: Int, column: Int,
+        ): Component {
+            val config = value as? AiProviderConfig
+            tags = config?.tags ?: emptyList()
+            rowEnabled = config?.enabled ?: true
+            val mt = table as? ModelTable
+            hover = mt?.hoverRow == row
+            cellBackground = if (hover) table.selectionBackground else table.background
+            cellForeground = if (rowEnabled) table.foreground else JBColor.GRAY
+            // 与编辑弹窗 chip 字号保持一致
+            font = font.deriveFont(11f)
+            // 截断时 tooltip 展示完整标签
+            val cellWidth = table.getCellRect(row, column, false).width
+            toolTipText = if (tags.isNotEmpty() && wouldTruncate(cellWidth)) {
+                tags.joinToString(", ")
+            } else {
+                null
+            }
+            return this
+        }
+
+        override fun paintComponent(g: java.awt.Graphics) {
+            val g2 = g as java.awt.Graphics2D
+            g2.setRenderingHint(
+                java.awt.RenderingHints.KEY_ANTIALIASING,
+                java.awt.RenderingHints.VALUE_ANTIALIAS_ON,
+            )
+            // 单元格背景：hover 高亮（行不可选，无选中背景）
+            g2.color = cellBackground
+            g2.fillRect(0, 0, width, height)
+            if (tags.isEmpty()) return
+
+            val fm = g2.fontMetrics
+            val chipH = fm.maxAscent + fm.maxDescent + TagChipStyle.V_PAD * 2
+            val y = (height - chipH) / 2
+            var x = LEFT_INSET
+            tags.forEachIndexed { index, tag ->
+                val chipW = fm.stringWidth(tag) + TagChipStyle.H_PAD * 2
+                if (x + chipW > width) {
+                    // 放不下剩余 chip：空间足够时补一个省略号
+                    if (index > 0 && x + fm.stringWidth("\u2026") + ELLIPSIS_GAP <= width) {
+                        g2.color = cellForeground
+                        g2.drawString("\u2026", x + ELLIPSIS_GAP, textBaseline(y, chipH, fm))
+                    }
+                    return
+                }
+                // chip 背景 + 圆角边框
+                g2.color = TagChipStyle.background
+                g2.fillRoundRect(x, y, chipW - 1, chipH - 1, TagChipStyle.ARC, TagChipStyle.ARC)
+                g2.color = JBColor.border()
+                g2.drawRoundRect(x, y, chipW - 1, chipH - 1, TagChipStyle.ARC, TagChipStyle.ARC)
+                // 文本垂直居中
+                g2.color = cellForeground
+                g2.drawString(tag, x + TagChipStyle.H_PAD, textBaseline(y, chipH, fm))
+                x += chipW + CHIP_GAP
+            }
+        }
+
+        /** 文本基线：在 chip 内垂直居中 */
+        private fun textBaseline(chipTop: Int, chipHeight: Int, fm: java.awt.FontMetrics): Int =
+            chipTop + (chipHeight - (fm.maxAscent + fm.maxDescent)) / 2 + fm.maxAscent
+
+        /** 按单元格宽度估算是否需要截断（与 paintComponent 用同一套度量） */
+        private fun wouldTruncate(cellWidth: Int): Boolean {
+            val fm = getFontMetrics(font)
+            var x = LEFT_INSET
+            tags.forEach { tag ->
+                val chipW = fm.stringWidth(tag) + TagChipStyle.H_PAD * 2
+                if (x + chipW > cellWidth) return true
+                x += chipW + CHIP_GAP
+            }
+            return false
+        }
+
+        companion object {
+            /** 首枚 chip 距单元格左缘的间距 */
+            private const val LEFT_INSET = 4
+
+            /** chip 之间的横向间距 */
+            private const val CHIP_GAP = 4
+
+            /** 省略号与前一 chip 的间距 */
+            private const val ELLIPSIS_GAP = 6
         }
     }
 
@@ -1544,6 +1664,7 @@ class SettingsConfigurable : Configurable {
     }
 
     companion object {
+        private const val TAGS_COLUMN = 2
         private const val ACTION_COLUMN = 4
         private const val ACTION_GAP = 4
         private const val ACTION_ICON_W = 26
