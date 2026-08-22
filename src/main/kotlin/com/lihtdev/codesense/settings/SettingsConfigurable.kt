@@ -407,10 +407,18 @@ class SettingsConfigurable : Configurable {
             addActionListener { onPresetSelected() }
         }
 
-        private val nameField = JTextField(30)
-        private val planTypeCombo = JComboBox<ProviderPlanType>()
-        private val baseUrlField = JTextField(30)
-        private val apiKeyField = JBPasswordField()
+        private val nameField = JTextField(30).apply {
+            minimumSize = Dimension(200, preferredSize.height)
+        }
+        private val planTypeCombo = JComboBox<ProviderPlanType>().apply {
+            minimumSize = Dimension(140, preferredSize.height)
+        }
+        private val baseUrlField = JTextField(30).apply {
+            minimumSize = Dimension(220, preferredSize.height)
+        }
+        private val apiKeyField = JBPasswordField().apply {
+            minimumSize = Dimension(200, preferredSize.height)
+        }
         private val testButton = JButton(CodeSenseBundle.message("settings.testConnection")).apply {
             addActionListener { testConnection() }
         }
@@ -431,7 +439,9 @@ class SettingsConfigurable : Configurable {
                 }
             })
         }
-        private val manualModelField = JTextField(18)
+        private val manualModelField = JTextField(18).apply {
+            minimumSize = Dimension(120, preferredSize.height)
+        }
 
         /** 程序化加载期间为 true，防止监听器误触发 */
         private var isLoading = false
@@ -443,14 +453,13 @@ class SettingsConfigurable : Configurable {
 
         init {
             title = CodeSenseBundle.message("settings.addProvider.title")
+            presetCombo.minimumSize = Dimension(200, 30)
             planTypeCombo.renderer = PlanRenderer()
             planTypeCombo.addActionListener { onPlanTypeChanged() }
             setOKButtonText(CodeSenseBundle.message("settings.addProvider.confirm"))
             setCancelButtonText(CodeSenseBundle.message("settings.addProvider.cancel"))
             onPresetSelected()
             init()
-            // 设置弹窗最小宽度
-            window.minimumSize = Dimension(600, 600)
         }
 
         override fun createCenterPanel(): JComponent {
@@ -491,24 +500,43 @@ class SettingsConfigurable : Configurable {
                 preferredSize = Dimension(320, 140)
             }
 
+            // 表单标签（设置最小宽度，避免窗口缩小时文字被挤压）
+            val templateLabel = JLabel(CodeSenseBundle.message("settings.addProvider.template")).apply {
+                minimumSize = preferredSize
+            }
+            val providerLabel = JLabel(SettingsConfigurable.requiredLabel("settings.provider")).apply {
+                minimumSize = preferredSize
+            }
+            val planTypeLabel = JLabel(CodeSenseBundle.message("settings.planType")).apply {
+                minimumSize = preferredSize
+            }
+            val baseUrlLabel = JLabel(SettingsConfigurable.requiredLabel("settings.baseUrl")).apply {
+                minimumSize = preferredSize
+            }
+            val apiKeyLabel = JLabel(CodeSenseBundle.message("settings.apiKey")).apply {
+                minimumSize = preferredSize
+            }
+            val selectModelsLabel = JLabel(SettingsConfigurable.requiredLabel("settings.addProvider.selectModels")).apply {
+                font = font.deriveFont(Font.BOLD, 12f)
+                minimumSize = preferredSize
+            }
+
             return FormBuilder.createFormBuilder()
                 .addComponent(hintLabel)
                 .addSeparator()
                 .addVerticalGap(6)
-                .addLabeledComponent(JLabel(CodeSenseBundle.message("settings.addProvider.template")), presetCombo)
+                .addLabeledComponent(templateLabel, presetCombo)
                 .addVerticalGap(6)
-                .addLabeledComponent(JLabel(SettingsConfigurable.requiredLabel("settings.provider")), nameField)
+                .addLabeledComponent(providerLabel, nameField)
                 .addVerticalGap(6)
-                .addLabeledComponent(JLabel(CodeSenseBundle.message("settings.planType")), planTypeCombo)
+                .addLabeledComponent(planTypeLabel, planTypeCombo)
                 .addVerticalGap(6)
-                .addLabeledComponent(JLabel(SettingsConfigurable.requiredLabel("settings.baseUrl")), baseUrlWithNote)
+                .addLabeledComponent(baseUrlLabel, baseUrlWithNote)
                 .addVerticalGap(6)
-                .addLabeledComponent(JLabel(CodeSenseBundle.message("settings.apiKey")), apiKeyField)
+                .addLabeledComponent(apiKeyLabel, apiKeyField)
                 .addVerticalGap(6)
                 .addSeparator()
-                .addComponent(JLabel(SettingsConfigurable.requiredLabel("settings.addProvider.selectModels")).apply {
-                    font = font.deriveFont(Font.BOLD, 12f)
-                })
+                .addComponent(selectModelsLabel)
                 .addComponent(buttonRow)
                 .addComponent(listScroll)
                 .addComponent(manualRow)
@@ -947,17 +975,33 @@ class SettingsConfigurable : Configurable {
         private val initialApiKey: String?,
     ) : DialogWrapper(parent, true) {
 
-        private val modelDisplayNameField = JTextField(30)
-        private val modelCombo = JComboBox<String>().apply { isEditable = true }
+        private val modelDisplayNameField = JTextField(30).apply {
+            minimumSize = Dimension(200, 30)
+        }
+        private val modelCombo = JComboBox<String>().apply {
+            isEditable = true
+            minimumSize = Dimension(200, 30)
+        }
         private val fetchModelButton = JButton(CodeSenseBundle.message("settings.editProvider.fetchModels")).apply {
             addActionListener { fetchModels() }
+            minimumSize = Dimension(75, 30)
         }
         private val tagsPanel = TagsPanel()
-        private val providerNameField = JTextField(30)
-        private val planTypeCombo = JComboBox<ProviderPlanType>()
-        private val baseUrlField = JTextField(30)
-        private val apiKeyField = JBPasswordField()
-        private val enabledCheckbox = JCheckBox(CodeSenseBundle.message("settings.editProvider.enabled"))
+        private val providerNameField = JTextField(30).apply {
+            minimumSize = Dimension(200, 30)
+        }
+        private val planTypeCombo = JComboBox<ProviderPlanType>().apply {
+            minimumSize = Dimension(140, 30)
+        }
+        private val baseUrlField = JTextField(30).apply {
+            minimumSize = Dimension(220, 30)
+        }
+        private val apiKeyField = JBPasswordField().apply {
+            minimumSize = Dimension(200, 30)
+        }
+        private val enabledCheckbox = JCheckBox(CodeSenseBundle.message("settings.editProvider.enabled")).apply {
+            minimumSize = Dimension(180, 30)
+        }
         private val testButton = JButton(CodeSenseBundle.message("settings.testConnection")).apply {
             addActionListener { testConnection() }
         }
@@ -975,8 +1019,6 @@ class SettingsConfigurable : Configurable {
             setCancelButtonText(CodeSenseBundle.message("settings.addProvider.cancel"))
             loadInitial()
             init()
-            // 设置弹窗最小宽度
-            window.minimumSize = Dimension(600, 600)
         }
 
         override fun createCenterPanel(): JComponent {
@@ -1007,20 +1049,43 @@ class SettingsConfigurable : Configurable {
                 add(tagsHintLabel, BorderLayout.SOUTH)
             }
 
+            // 表单标签（设置最小宽度，避免窗口缩小时文字被挤压）
+            val displayNameLabel = JLabel(CodeSenseBundle.message("settings.editProvider.displayName")).apply {
+                minimumSize = preferredSize
+            }
+            val modelLabel = JLabel(SettingsConfigurable.requiredLabel("settings.editProvider.model")).apply {
+                minimumSize = preferredSize
+            }
+            val tagsLabel = JLabel(CodeSenseBundle.message("settings.editProvider.tags")).apply {
+                minimumSize = preferredSize
+            }
+            val providerLabel = JLabel(SettingsConfigurable.requiredLabel("settings.provider")).apply {
+                minimumSize = preferredSize
+            }
+            val planTypeLabel = JLabel(CodeSenseBundle.message("settings.planType")).apply {
+                minimumSize = preferredSize
+            }
+            val baseUrlLabel = JLabel(SettingsConfigurable.requiredLabel("settings.baseUrl")).apply {
+                minimumSize = preferredSize
+            }
+            val apiKeyLabel = JLabel(CodeSenseBundle.message("settings.apiKey")).apply {
+                minimumSize = preferredSize
+            }
+
             return FormBuilder.createFormBuilder()
-                .addLabeledComponent(JLabel(CodeSenseBundle.message("settings.editProvider.displayName")), modelDisplayNameField)
+                .addLabeledComponent(displayNameLabel, modelDisplayNameField)
                 .addVerticalGap(6)
-                .addLabeledComponent(JLabel(SettingsConfigurable.requiredLabel("settings.editProvider.model")), modelRow)
+                .addLabeledComponent(modelLabel, modelRow)
                 .addVerticalGap(6)
-                .addLabeledComponent(JLabel(CodeSenseBundle.message("settings.editProvider.tags")), tagsWithHint)
+                .addLabeledComponent(tagsLabel, tagsWithHint)
                 .addVerticalGap(6)
-                .addLabeledComponent(JLabel(SettingsConfigurable.requiredLabel("settings.provider")), providerNameField)
+                .addLabeledComponent(providerLabel, providerNameField)
                 .addVerticalGap(6)
-                .addLabeledComponent(JLabel(CodeSenseBundle.message("settings.planType")), planTypeCombo)
+                .addLabeledComponent(planTypeLabel, planTypeCombo)
                 .addVerticalGap(6)
-                .addLabeledComponent(JLabel(SettingsConfigurable.requiredLabel("settings.baseUrl")), baseUrlWithNote)
+                .addLabeledComponent(baseUrlLabel, baseUrlWithNote)
                 .addVerticalGap(6)
-                .addLabeledComponent(JLabel(CodeSenseBundle.message("settings.apiKey")), apiKeyField)
+                .addLabeledComponent(apiKeyLabel, apiKeyField)
                 .addVerticalGap(6)
                 .addLabeledComponent(JLabel(), enabledCheckbox)
                 .panel
