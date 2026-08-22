@@ -2,14 +2,15 @@ package com.lihtdev.codesense.ui
 
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.project.Project
+import com.intellij.openapi.util.IconLoader
 import com.intellij.openapi.wm.StatusBar
 import com.intellij.openapi.wm.StatusBarWidget
 import com.intellij.openapi.wm.StatusBarWidgetFactory
-import com.intellij.openapi.wm.impl.status.widget.StatusBarEditorBasedWidgetFactory
 import com.intellij.util.Consumer
 import com.lihtdev.codesense.i18n.CodeSenseBundle
 import com.lihtdev.codesense.settings.AppSettings
 import java.awt.event.MouseEvent
+import javax.swing.Icon
 
 /**
  * IDE 底部状态栏模型切换器工厂。
@@ -34,17 +35,21 @@ class ModelSwitcherWidgetFactory : StatusBarWidgetFactory {
 }
 
 /**
- * 状态栏模型切换器：显示当前模型名称，点击弹出切换面板。
+ * 状态栏模型切换器：仅显示插件图标，点击弹出两级切换窗口。
  */
 class ModelSwitcherWidget(private val project: Project) : StatusBarWidget {
 
     private var statusBar: StatusBar? = null
 
-    /** 当前显示文本 */
-    private fun currentText(): String {
+    private val icon: Icon by lazy {
+        IconLoader.getIcon("/icons/codesense.svg", ModelSwitcherWidget::class.java)
+    }
+
+    /** 当前 tooltip */
+    private fun currentTooltip(): String {
         val provider = AppSettings.instance.activeProvider()
         return if (provider != null) {
-            CodeSenseBundle.message("statusbar.modelSwitcher.text", provider.displayName, provider.model)
+            "${provider.displayName} / ${provider.model}"
         } else {
             CodeSenseBundle.message("statusbar.modelSwitcher.noProvider")
         }
@@ -54,7 +59,6 @@ class ModelSwitcherWidget(private val project: Project) : StatusBarWidget {
 
     override fun install(statusBar: StatusBar) {
         this.statusBar = statusBar
-        // 监听设置变更
         ApplicationManager.getApplication().messageBus.connect(this)
             .subscribe(AppSettingsListener.TOPIC, object : AppSettingsListener {
                 override fun providerChanged() {
@@ -68,21 +72,18 @@ class ModelSwitcherWidget(private val project: Project) : StatusBarWidget {
     }
 
     override fun getPresentation(): StatusBarWidget.WidgetPresentation {
-        return object : StatusBarWidget.TextPresentation {
-            override fun getText(): String = currentText()
+        return object : StatusBarWidget.IconPresentation {
+            override fun getIcon(): Icon = icon
 
-            override fun getTooltipText(): String =
-                CodeSenseBundle.message("statusbar.modelSwitcher.tooltip")
+            override fun getTooltipText(): String = currentTooltip()
 
             override fun getClickConsumer(): Consumer<MouseEvent>? {
                 return Consumer {
-                    ModelSwitcherPopup.show(project, it.component) {
+                    ModelSwitcherPopup.showFirstLevel(project, it.component) {
                         statusBar?.updateWidget(ID())
                     }
                 }
             }
-
-            override fun getAlignment(): Float = 0f
         }
     }
 }

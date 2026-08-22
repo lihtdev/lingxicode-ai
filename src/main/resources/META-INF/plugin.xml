@@ -23,7 +23,8 @@
         <applicationConfigurable parentId="tools"
                                  id="codesense.settings"
                                  instance="com.lihtdev.codesense.settings.SettingsConfigurable"
-                                 displayName="CodeSense AI"/>
+                                 displayName="CodeSense AI"
+                                 icon="/icons/codesense.svg"/>
         <!-- 通知组 -->
         <notificationGroup id="CodeSenseAI" displayType="BALLOON"/>
         <!-- 状态栏模型切换器 -->

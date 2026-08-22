@@ -13,8 +13,8 @@ import com.intellij.openapi.components.Storage
  * 字段经 IntelliJ 持久化机制序列化到 codesense-ai.xml。
  */
 data class AppSettingsState(
-    var providers: MutableList<AiProviderConfig> = ProviderPresets.defaultProviders().toMutableList(),
-    var activeProviderId: String = ProviderPresets.ALL.first().id,
+    var providers: MutableList<AiProviderConfig> = mutableListOf(),
+    var activeProviderId: String = "",
     var outputLanguage: String = "zh",
     var uiLanguage: String = "zh",
     var maxDiffChars: Int = DEFAULT_MAX_DIFF_CHARS,
