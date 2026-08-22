@@ -2,6 +2,7 @@
 .gradle/
 build/
 .intellijPlatform/
+.kotlin/
 
 # IDE
 .idea/

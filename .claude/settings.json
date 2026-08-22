@@ -1,0 +1,13 @@
+{
+  "ignorePatterns": [
+    ".gradle/",
+    "build/",
+    ".intellijPlatform/",
+    ".kotlin/",
+    ".idea/",
+    "*.iml",
+    "gradle/wrapper/gradle-wrapper.jar",
+    "gradlew",
+    "gradlew.bat"
+  ]
+}

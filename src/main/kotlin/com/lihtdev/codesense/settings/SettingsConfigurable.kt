@@ -9,6 +9,10 @@ import com.intellij.openapi.project.ProjectManager
 import com.intellij.openapi.ui.Messages
 import com.intellij.ui.components.JBPasswordField
 import com.intellij.util.ui.FormBuilder
+import com.lihtdev.codesense.ai.AiClientException
+import com.lihtdev.codesense.ai.ChatMessage
+import com.lihtdev.codesense.ai.OpenAiCompatClient
+import com.lihtdev.codesense.i18n.CodeSenseBundle
 import java.awt.Component
 import java.util.UUID
 import javax.swing.DefaultComboBoxModel
@@ -18,14 +22,11 @@ import javax.swing.JComponent
 import javax.swing.JLabel
 import javax.swing.JPanel
 import javax.swing.ListCellRenderer
-import com.lihtdev.codesense.ai.AiClientException
-import com.lihtdev.codesense.ai.ChatMessage
-import com.lihtdev.codesense.ai.OpenAiCompatClient
 
 /**
  * 设置页（Tools → CodeSense AI）。
  * 厂商下拉 + 类型下拉（自动带出 baseUrl）+ baseUrl / model（可编辑下拉）/ API Key，
- * 支持「添加自定义」「删除」「测试连接」，以及输出语言与 diff 上限。
+ * 支持「添加自定义」「删除」「测试连接」，以及输出语言、UI 语言与 diff 上限。
  */
 class SettingsConfigurable : Configurable {
 
@@ -45,7 +46,18 @@ class SettingsConfigurable : Configurable {
     private val baseUrlField = javax.swing.JTextField()
     private val modelCombo = JComboBox<String>()
     private val apiKeyField = JBPasswordField()
-    private val languageCombo = JComboBox(arrayOf(LANGUAGE_ZH, LANGUAGE_EN))
+    private val outputLanguageCombo = JComboBox(
+        arrayOf(
+            CodeSenseBundle.message("settings.language.zh"),
+            CodeSenseBundle.message("settings.language.en"),
+        ),
+    )
+    private val uiLanguageCombo = JComboBox(
+        arrayOf(
+            CodeSenseBundle.message("settings.language.zh"),
+            CodeSenseBundle.message("settings.language.en"),
+        ),
+    )
     private val maxDiffField = javax.swing.JSpinner(javax.swing.SpinnerNumberModel(60000, 1000, 1000000, 1000))
     private val mainPanel: JComponent
 
@@ -54,9 +66,15 @@ class SettingsConfigurable : Configurable {
         planCombo.renderer = PlanRenderer()
 
         val buttonPanel = JPanel(java.awt.FlowLayout(java.awt.FlowLayout.LEFT)).apply {
-            add(JButton("添加自定义").apply { addActionListener { addCustomProvider() } })
-            add(JButton("删除当前").apply { addActionListener { removeCurrentProvider() } })
-            add(JButton("测试连接").apply { addActionListener { testConnection() } })
+            add(JButton(CodeSenseBundle.message("settings.addCustom")).apply {
+                addActionListener { addCustomProvider() }
+            })
+            add(JButton(CodeSenseBundle.message("settings.deleteCurrent")).apply {
+                addActionListener { removeCurrentProvider() }
+            })
+            add(JButton(CodeSenseBundle.message("settings.testConnection")).apply {
+                addActionListener { testConnection() }
+            })
         }
 
         modelCombo.isEditable = true
@@ -65,15 +83,16 @@ class SettingsConfigurable : Configurable {
         planCombo.addActionListener { onPlanChanged() }
 
         mainPanel = FormBuilder.createFormBuilder()
-            .addLabeledComponent(JLabel("厂商："), providerCombo)
-            .addLabeledComponent(JLabel("类型："), planCombo)
-            .addLabeledComponent(JLabel("接口地址（baseUrl）："), baseUrlField)
-            .addLabeledComponent(JLabel("模型："), modelCombo)
-            .addLabeledComponent(JLabel("API Key："), apiKeyField)
+            .addLabeledComponent(JLabel(CodeSenseBundle.message("settings.provider")), providerCombo)
+            .addLabeledComponent(JLabel(CodeSenseBundle.message("settings.planType")), planCombo)
+            .addLabeledComponent(JLabel(CodeSenseBundle.message("settings.baseUrl")), baseUrlField)
+            .addLabeledComponent(JLabel(CodeSenseBundle.message("settings.model")), modelCombo)
+            .addLabeledComponent(JLabel(CodeSenseBundle.message("settings.apiKey")), apiKeyField)
             .addComponent(buttonPanel)
             .addSeparator()
-            .addLabeledComponent(JLabel("提交信息语言："), languageCombo)
-            .addLabeledComponent(JLabel("Diff 最大字符数："), maxDiffField)
+            .addLabeledComponent(JLabel(CodeSenseBundle.message("settings.outputLanguage")), outputLanguageCombo)
+            .addLabeledComponent(JLabel(CodeSenseBundle.message("settings.uiLanguage")), uiLanguageCombo)
+            .addLabeledComponent(JLabel(CodeSenseBundle.message("settings.maxDiff")), maxDiffField)
             .addComponentFillVertically(JPanel(), 0)
             .panel
 
@@ -82,17 +101,19 @@ class SettingsConfigurable : Configurable {
 
     // ---- Configurable 实现 ----
 
-    override fun getDisplayName(): String = "CodeSense AI"
+    override fun getDisplayName(): String = CodeSenseBundle.message("settings.displayName")
 
     override fun createComponent(): JComponent = mainPanel
 
     override fun isModified(): Boolean {
         syncUiToWorking()
         val current = settings.state
-        val appliedLanguage = if (languageCombo.selectedIndex == 1) "en" else "zh"
+        val appliedOutputLanguage = if (outputLanguageCombo.selectedIndex == 1) "en" else "zh"
+        val appliedUiLanguage = if (uiLanguageCombo.selectedIndex == 1) "en" else "zh"
         return workingProviders != current.providers
             || workingActiveId != current.activeProviderId
-            || appliedLanguage != current.outputLanguage
+            || appliedOutputLanguage != current.outputLanguage
+            || appliedUiLanguage != current.uiLanguage
             || (maxDiffField.value as Int) != current.maxDiffChars
             || workingApiKeys.any { (id, key) -> AppSettings.getApiKey(id) != key }
     }
@@ -102,7 +123,8 @@ class SettingsConfigurable : Configurable {
         val state = settings.state
         state.providers = workingProviders.map { it.copy() }.toMutableList()
         state.activeProviderId = workingActiveId
-        state.outputLanguage = if (languageCombo.selectedIndex == 1) "en" else "zh"
+        state.outputLanguage = if (outputLanguageCombo.selectedIndex == 1) "en" else "zh"
+        state.uiLanguage = if (uiLanguageCombo.selectedIndex == 1) "en" else "zh"
         state.maxDiffChars = maxDiffField.value as Int
         // API Key 写入 PasswordSafe
         workingApiKeys.forEach { (id, key) ->
@@ -116,7 +138,8 @@ class SettingsConfigurable : Configurable {
         workingActiveId = state.activeProviderId
         workingApiKeys.clear()
         workingProviders.forEach { workingApiKeys[it.id] = AppSettings.getApiKey(it.id) }
-        languageCombo.selectedIndex = if (state.outputLanguage == "en") 1 else 0
+        outputLanguageCombo.selectedIndex = if (state.outputLanguage == "en") 1 else 0
+        uiLanguageCombo.selectedIndex = if (state.uiLanguage == "en") 1 else 0
         maxDiffField.value = state.maxDiffChars
         refreshProviderCombo()
     }
@@ -191,7 +214,10 @@ class SettingsConfigurable : Configurable {
     /** 添加自定义厂商（任意 OpenAI 兼容端点） */
     private fun addCustomProvider() {
         val name = Messages.showInputDialog(
-            mainPanel, "请输入自定义厂商名称：", "添加自定义厂商", null,
+            mainPanel,
+            CodeSenseBundle.message("settings.custom.name.prompt"),
+            CodeSenseBundle.message("settings.custom.name.title"),
+            null,
         )?.trim() ?: return
         if (name.isEmpty()) return
         val config = AiProviderConfig(
@@ -212,7 +238,11 @@ class SettingsConfigurable : Configurable {
     private fun removeCurrentProvider() {
         val selected = providerCombo.selectedItem as? AiProviderConfig ?: return
         if (workingProviders.size <= 1) {
-            Messages.showWarningDialog(mainPanel, "至少保留一个厂商配置", "无法删除")
+            Messages.showWarningDialog(
+                mainPanel,
+                CodeSenseBundle.message("settings.cannotDelete"),
+                CodeSenseBundle.message("settings.cannotDelete.title"),
+            )
             return
         }
         workingProviders.remove(selected)
@@ -228,34 +258,47 @@ class SettingsConfigurable : Configurable {
         syncUiToWorking()
         val provider = providerCombo.selectedItem as? AiProviderConfig ?: return
         if (provider.baseUrl.isBlank() || provider.model.isBlank()) {
-            Messages.showWarningDialog(mainPanel, "请先填写接口地址与模型名称", "无法测试")
+            Messages.showWarningDialog(
+                mainPanel,
+                CodeSenseBundle.message("settings.test.warn.config"),
+                CodeSenseBundle.message("settings.test.warn.title"),
+            )
             return
         }
         val apiKey = workingApiKeys[provider.id] ?: ""
         if (apiKey.isBlank()) {
-            Messages.showWarningDialog(mainPanel, "请先填写 API Key", "无法测试")
+            Messages.showWarningDialog(
+                mainPanel,
+                CodeSenseBundle.message("settings.test.warn.key"),
+                CodeSenseBundle.message("settings.test.warn.title"),
+            )
             return
         }
         val project: Project? = ProjectManager.getInstance().openProjects.firstOrNull()
         val startedAt = System.currentTimeMillis()
-        object : Task.Backgroundable(project, "正在测试 ${provider.displayName} 连接…", true) {
+        val taskTitle = CodeSenseBundle.message("settings.test.progress", provider.displayName)
+        object : Task.Backgroundable(project, taskTitle, true) {
             override fun run(indicator: ProgressIndicator) {
                 val reply = try {
                     OpenAiCompatClient().chat(
                         provider, apiKey,
                         listOf(
-                            ChatMessage("user", "你好，请回复「连接成功」四个字。"),
+                            ChatMessage("user", "Reply with just the word 'OK'."),
                         ),
                     )
                 } catch (e: AiClientException) {
-                    notifyTestResult("连接失败：${e.message}")
+                    notifyTestResult(CodeSenseBundle.message("notification.testFail", e.message ?: ""))
                     return
                 } catch (e: Exception) {
-                    notifyTestResult("连接失败：${e.message ?: e.javaClass.simpleName}")
+                    notifyTestResult(
+                        CodeSenseBundle.message("notification.testFail", e.message ?: e.javaClass.simpleName),
+                    )
                     return
                 }
                 val elapsed = System.currentTimeMillis() - startedAt
-                notifyTestResult("连接成功（${elapsed}ms）：${reply.take(50)}")
+                notifyTestResult(
+                    CodeSenseBundle.message("notification.testSuccess", elapsed.toString(), reply.take(50)),
+                )
             }
         }.queue()
     }
@@ -263,7 +306,9 @@ class SettingsConfigurable : Configurable {
     private fun notifyTestResult(message: String) {
         com.intellij.notification.Notifications.Bus.notify(
             com.intellij.notification.Notification(
-                "CodeSenseAI", "CodeSense AI - 测试连接", message,
+                "CodeSenseAI",
+                CodeSenseBundle.message("notification.groupTitle"),
+                message,
                 com.intellij.notification.NotificationType.INFORMATION,
             ),
             null,
@@ -297,7 +342,13 @@ class SettingsConfigurable : Configurable {
             list: javax.swing.JList<out Any?>, value: Any?, index: Int,
             isSelected: Boolean, cellHasFocus: Boolean,
         ): Component {
-            delegate.text = (value as? ProviderPlanType)?.displayName ?: value.toString()
+            val text = when (value as? ProviderPlanType) {
+                ProviderPlanType.TOKEN_PLAN -> CodeSenseBundle.message("provider.type.tokenPlan")
+                ProviderPlanType.CODING_PLAN -> CodeSenseBundle.message("provider.type.codingPlan")
+                ProviderPlanType.PAY_AS_YOU_GO -> CodeSenseBundle.message("provider.type.payAsYouGo")
+                else -> value.toString()
+            }
+            delegate.text = text
             if (isSelected) {
                 delegate.background = list.selectionBackground
                 delegate.foreground = list.selectionForeground
@@ -311,9 +362,6 @@ class SettingsConfigurable : Configurable {
     }
 
     companion object {
-        private const val LANGUAGE_ZH = "中文"
-        private const val LANGUAGE_EN = "English"
-
         /** 打开设置页（供外部跳转） */
         fun open(project: Project?) {
             ShowSettingsUtil.getInstance().showSettingsDialog(project, SettingsConfigurable::class.java)

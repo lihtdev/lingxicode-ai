@@ -3,10 +3,10 @@ package com.lihtdev.codesense.settings
 /**
  * 类型（厂商套餐类型）：区别仅在于 baseUrl，API 协议统一为 OpenAI 兼容格式。
  */
-enum class ProviderPlanType(val displayName: String) {
-    TOKEN_PLAN("Token Plan"),
-    CODING_PLAN("Coding Plan"),
-    PAY_AS_YOU_GO("按量付费"),
+enum class ProviderPlanType {
+    TOKEN_PLAN,
+    CODING_PLAN,
+    PAY_AS_YOU_GO,
 }
 
 /**

@@ -16,6 +16,7 @@ data class AppSettingsState(
     var providers: MutableList<AiProviderConfig> = ProviderPresets.defaultProviders().toMutableList(),
     var activeProviderId: String = ProviderPresets.ALL.first().id,
     var outputLanguage: String = "zh",
+    var uiLanguage: String = "zh",
     var maxDiffChars: Int = DEFAULT_MAX_DIFF_CHARS,
 ) {
     companion object {
@@ -24,7 +25,7 @@ data class AppSettingsState(
 }
 
 /**
- * 应用级设置服务：厂商列表、当前生效厂商、输出语言、diff 上限。
+ * 应用级设置服务：厂商列表、当前生效厂商、输出语言、界面语言、diff 上限。
  * API Key 经 PasswordSafe 安全存储，不落盘。
  */
 @State(name = "CodeSenseSettings", storages = [Storage("codesense-ai.xml")])

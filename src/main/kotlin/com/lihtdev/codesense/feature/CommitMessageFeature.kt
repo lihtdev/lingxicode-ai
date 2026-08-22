@@ -5,6 +5,7 @@ import com.intellij.openapi.vcs.changes.Change
 import com.lihtdev.codesense.ai.ChatMessage
 import com.lihtdev.codesense.ai.PromptBuilder
 import com.lihtdev.codesense.git.DiffTextBuilder
+import com.lihtdev.codesense.i18n.CodeSenseBundle
 import com.lihtdev.codesense.settings.AppSettingsState
 
 /**
@@ -22,7 +23,7 @@ class CommitMessageFeature : AiFeature {
 
     override val id: String = "commit-message"
 
-    override val displayName: String = "提交信息生成"
+    override val displayName: String = CodeSenseBundle.message("feature.commitMessage")
 
     override fun buildPrompt(context: Any, settings: AppSettingsState): List<ChatMessage> {
         val ctx = context as CommitFeatureContext

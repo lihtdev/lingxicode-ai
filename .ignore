@@ -1,0 +1,16 @@
+# AI Coding Agent 忽略文件（ripgrep 通用语法）
+# 供不支持 .claude/settings.json 的 ripgrep 系工具兜底（Qoder / Qwen Code / Opencode 等）。
+# Claude Code / DeepSeek Harness 请以 .claude/settings.json 的 ignorePatterns 为准。
+
+# 构建与缓存目录
+.gradle/
+build/
+.intellijPlatform/
+.kotlin/
+.idea/
+*.iml
+
+# 被 git 跟踪、AI 无需读取的文件（.gitignore 无法覆盖，故在此声明）
+gradle/wrapper/gradle-wrapper.jar
+gradlew
+gradlew.bat

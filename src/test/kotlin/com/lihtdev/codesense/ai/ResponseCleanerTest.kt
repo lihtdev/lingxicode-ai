@@ -9,7 +9,7 @@ import org.junit.jupiter.api.Test
 class ResponseCleanerTest {
 
     @Test
-    fun `纯文本直接取首行`() {
+    fun `纯文本保留完整内容`() {
         assertEquals("feat: 新增用户登录校验", ResponseCleaner.clean("feat: 新增用户登录校验"))
     }
 
@@ -31,9 +31,27 @@ class ResponseCleanerTest {
     }
 
     @Test
-    fun `多行输出取第一行非空文本`() {
-        val raw = "\n\nfeat: 新增导出功能\n\n以下是说明……"
-        assertEquals("feat: 新增导出功能", ResponseCleaner.clean(raw))
+    fun `多行输出保留完整内容（含 body 与 footer）`() {
+        val raw = """
+            feat: 新增导出功能
+
+            支持 CSV 和 Excel 两种格式导出。
+
+            BREAKING CHANGE: 导出 API 签名变更，原有的 export() 方法已移除
+        """.trimIndent()
+        val cleaned = ResponseCleaner.clean(raw)
+        assertTrue(cleaned.startsWith("feat: 新增导出功能"))
+        assertTrue(cleaned.contains("BREAKING CHANGE"))
+    }
+
+    @Test
+    fun `cleanFirstLine 仅返回首行`() {
+        val raw = """
+            feat: 新增导出功能
+
+            详细说明……
+        """.trimIndent()
+        assertEquals("feat: 新增导出功能", ResponseCleaner.cleanFirstLine(raw))
     }
 
     @Test
@@ -42,10 +60,16 @@ class ResponseCleanerTest {
     }
 
     @Test
+    fun `cleanFirstLine 空白输入返回空串`() {
+        assertEquals("", ResponseCleaner.cleanFirstLine("   \n  \n"))
+    }
+
+    @Test
     fun `格式校验合法样例`() {
         assertTrue(ResponseCleaner.isConventional("feat: 新增功能"))
         assertTrue(ResponseCleaner.isConventional("fix(ui): 修复按钮错位"))
         assertTrue(ResponseCleaner.isConventional("refactor!: 重构数据层（破坏性变更）"))
+        assertTrue(ResponseCleaner.isConventional("feat(api)!: 重新设计认证接口"))
     }
 
     @Test

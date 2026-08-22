@@ -14,6 +14,7 @@ import com.lihtdev.codesense.ai.ChatMessage
 import com.lihtdev.codesense.ai.OpenAiCompatClient
 import com.lihtdev.codesense.ai.ResponseCleaner
 import com.lihtdev.codesense.feature.AiFeature
+import com.lihtdev.codesense.i18n.CodeSenseBundle
 import com.lihtdev.codesense.settings.AppSettings
 
 /**
@@ -36,12 +37,12 @@ class AiInvocationService(private val client: AiClient = OpenAiCompatClient()) {
         val settings = AppSettings.instance
         val provider = settings.activeProvider()
         if (provider == null || provider.baseUrl.isBlank() || provider.model.isBlank()) {
-            notifyWarning(project, "尚未配置可用的 AI 模型，请先在设置中完成配置")
+            notifyWarning(project, CodeSenseBundle.message("notification.noProvider"))
             return
         }
         val apiKey = AppSettings.getApiKey(provider.id)
         if (apiKey.isNullOrBlank()) {
-            notifyWarning(project, "「${provider.displayName}」尚未配置 API Key，请先在设置中填写")
+            notifyWarning(project, CodeSenseBundle.message("notification.noApiKey", provider.displayName))
             return
         }
 
@@ -56,7 +57,7 @@ class AiInvocationService(private val client: AiClient = OpenAiCompatClient()) {
                 indicator.checkCanceled()
                 val cleaned = ResponseCleaner.clean(raw)
                 if (cleaned.isBlank()) {
-                    throw AiClientException("模型返回内容为空，请重试或更换模型")
+                    throw AiClientException(CodeSenseBundle.message("error.emptyCleaned"))
                 }
                 ApplicationManager.getApplication().invokeLater {
                     feature.handleResult(cleaned, context)
@@ -64,7 +65,12 @@ class AiInvocationService(private val client: AiClient = OpenAiCompatClient()) {
             }
 
             override fun onThrowable(error: Throwable) {
-                notifyError(project, "${feature.displayName}失败：${error.message ?: error.javaClass.simpleName}")
+                val msg = CodeSenseBundle.message(
+                    "error.featureFailed",
+                    feature.displayName,
+                    error.message ?: error.javaClass.simpleName,
+                )
+                notifyError(project, msg)
             }
         }.queue()
     }
@@ -72,13 +78,14 @@ class AiInvocationService(private val client: AiClient = OpenAiCompatClient()) {
     companion object {
 
         private const val NOTIFICATION_GROUP = "CodeSenseAI"
-        private const val NOTIFICATION_TITLE = "CodeSense AI"
+
+        private fun notificationTitle(): String = CodeSenseBundle.message("notification.groupTitle")
 
         /** 弹出警告通知 */
         @JvmStatic
         fun notifyWarning(project: Project?, message: String) {
             Notifications.Bus.notify(
-                Notification(NOTIFICATION_GROUP, NOTIFICATION_TITLE, message, NotificationType.WARNING),
+                Notification(NOTIFICATION_GROUP, notificationTitle(), message, NotificationType.WARNING),
                 project,
             )
         }
@@ -87,7 +94,7 @@ class AiInvocationService(private val client: AiClient = OpenAiCompatClient()) {
         @JvmStatic
         fun notifyError(project: Project?, message: String) {
             Notifications.Bus.notify(
-                Notification(NOTIFICATION_GROUP, NOTIFICATION_TITLE, message, NotificationType.ERROR),
+                Notification(NOTIFICATION_GROUP, notificationTitle(), message, NotificationType.ERROR),
                 project,
             )
         }
@@ -96,7 +103,7 @@ class AiInvocationService(private val client: AiClient = OpenAiCompatClient()) {
         @JvmStatic
         fun notifyInfo(project: Project?, message: String) {
             Notifications.Bus.notify(
-                Notification(NOTIFICATION_GROUP, NOTIFICATION_TITLE, message, NotificationType.INFORMATION),
+                Notification(NOTIFICATION_GROUP, notificationTitle(), message, NotificationType.INFORMATION),
                 project,
             )
         }

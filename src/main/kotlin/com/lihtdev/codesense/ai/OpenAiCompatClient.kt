@@ -2,6 +2,7 @@ package com.lihtdev.codesense.ai
 
 import com.google.gson.Gson
 import com.google.gson.GsonBuilder
+import com.lihtdev.codesense.i18n.CodeSenseBundle
 import com.lihtdev.codesense.settings.AiProviderConfig
 import java.net.URI
 import java.net.http.HttpClient
@@ -28,10 +29,10 @@ class OpenAiCompatClient : AiClient {
     override fun chat(provider: AiProviderConfig, apiKey: String, messages: List<ChatMessage>): String {
         val baseUrl = provider.baseUrl.trim().trimEnd('/')
         if (baseUrl.isBlank()) {
-            throw AiClientException("接口地址（baseUrl）未配置，请在设置中填写")
+            throw AiClientException(CodeSenseBundle.message("error.baseUrlNotSet"))
         }
         if (provider.model.isBlank()) {
-            throw AiClientException("模型名称未配置，请在设置中填写")
+            throw AiClientException(CodeSenseBundle.message("error.modelNotSet"))
         }
         val request = HttpRequest.newBuilder()
             .uri(URI.create("$baseUrl/chat/completions"))
@@ -51,7 +52,10 @@ class OpenAiCompatClient : AiClient {
         } catch (e: InterruptedException) {
             throw e // 用户取消，直接向上传递
         } catch (e: Exception) {
-            throw AiClientException("网络请求失败：${e.javaClass.simpleName}：${e.message}", e)
+            throw AiClientException(
+                CodeSenseBundle.message("error.networkFailed", e.javaClass.simpleName, e.message ?: ""),
+                e,
+            )
         }
 
         if (response.statusCode() / 100 != 2) {
@@ -61,22 +65,23 @@ class OpenAiCompatClient : AiClient {
         val parsed = try {
             gson.fromJson(response.body(), ChatCompletionResponse::class.java)
         } catch (e: Exception) {
-            throw AiClientException("响应解析失败（非预期 JSON 结构）：${e.message}", e)
+            throw AiClientException(CodeSenseBundle.message("error.parseFailed", e.message ?: ""), e)
         }
         return parsed.firstContent()
-            ?: throw AiClientException("模型未返回内容（响应缺少 choices[0].message.content）")
+            ?: throw AiClientException(CodeSenseBundle.message("error.emptyResponse"))
     }
 
-    /** 将 HTTP 状态码与错误体映射为用户可读中文提示 */
+    /** 将 HTTP 状态码与错误体映射为用户可读提示 */
     private fun mapError(status: Int, body: String): String {
         val detail = extractErrorMessage(body)
-        return when (status) {
-            401 -> "API Key 无效（HTTP 401）$detail"
-            403 -> "无访问权限，请检查 API Key 与套餐（HTTP 403）$detail"
-            404 -> "接口地址或模型名有误（HTTP 404）$detail"
-            429 -> "请求过于频繁或额度不足（HTTP 429）$detail"
-            else -> "请求失败（HTTP $status）$detail"
+        val base = when (status) {
+            401 -> CodeSenseBundle.message("error.http401")
+            403 -> CodeSenseBundle.message("error.http403")
+            404 -> CodeSenseBundle.message("error.http404")
+            429 -> CodeSenseBundle.message("error.http429")
+            else -> CodeSenseBundle.message("error.httpOther", status.toString())
         }
+        return if (detail != null) "$base$detail" else base
     }
 
     /** 尝试从错误响应体提取 error.message */
