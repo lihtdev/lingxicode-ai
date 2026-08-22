@@ -133,9 +133,9 @@ class SettingsConfigurable : Configurable {
         val panel = JPanel(BorderLayout())
         panel.border = JBUI.Borders.empty(0, 0, 12, 0)
 
-        // Logo：用 IconUtil 缩放放大（原始 SVG 为 16×16，放大到 96×96）
+        // Logo：用 IconUtil 缩放放大（原始 SVG 为 16×16，放大到 80×80）
         val rawIcon = IconLoader.getIcon("/icons/codesense.svg", SettingsConfigurable::class.java)
-        val scaledIcon = IconUtil.scale(rawIcon, panel, 6.0f)
+        val scaledIcon = IconUtil.scale(rawIcon, panel, 5.0f)
         val iconLabel = JLabel(scaledIcon).apply {
             border = JBUI.Borders.emptyRight(16)
         }
