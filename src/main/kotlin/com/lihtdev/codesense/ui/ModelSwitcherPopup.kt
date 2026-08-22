@@ -21,6 +21,8 @@ import java.awt.Component
 import java.awt.Dimension
 import java.awt.FlowLayout
 import java.awt.Font
+import java.awt.GridBagConstraints
+import java.awt.GridBagLayout
 import java.awt.Point
 import javax.swing.JButton
 import javax.swing.JComponent
@@ -295,37 +297,49 @@ object ModelSwitcherPopup {
         popup.moveToFitScreen()
     }
 
-    /** 品牌栏：logo + 品牌名靠左，设置齿轮（可选）靠右，同一行垂直居中 */
+    /** 品牌栏：logo + 品牌名靠左、设置齿轮（可选）靠右；GridBag 显式锚定保证同一行垂直居中 */
     private fun createBrandBar(onGearClick: (() -> Unit)?): JComponent {
         val logo = JLabel(IconLoader.getIcon("/icons/codesense.svg", ModelSwitcherPopup::class.java))
         val nameLabel = JBLabel(CodeSenseBundle.message("popup.brand.name")).apply {
             font = font.deriveFont(Font.BOLD, 13f)
         }
         val titleBlock = JPanel(FlowLayout(FlowLayout.LEFT, 6, 0)).apply {
-            alignmentY = 0.5f
             add(logo)
             add(nameLabel)
         }
-        return JPanel().apply {
-            layout = javax.swing.BoxLayout(this, javax.swing.BoxLayout.X_AXIS)
+        val bar = JPanel(GridBagLayout()).apply {
             border = JBUI.Borders.empty(0, 0, 4, 0)
-            add(titleBlock)
-            // 水平胶水把齿轮推到最右，品牌保持靠左
-            add(javax.swing.Box.createHorizontalGlue())
-            if (onGearClick != null) {
-                add(JButton(AllIcons.General.Settings).apply {
-                    isFocusable = false
-                    isContentAreaFilled = false
-                    isBorderPainted = false
-                    margin = JBUI.insets(0)
-                    // 显式垂直居中：齿轮按自然尺寸渲染，不随行高拉伸
-                    alignmentY = 0.5f
-                    cursor = java.awt.Cursor.getPredefinedCursor(java.awt.Cursor.HAND_CURSOR)
-                    toolTipText = CodeSenseBundle.message("popup.settings.tooltip")
-                    addActionListener { onGearClick() }
-                })
-            }
         }
+
+        // 品牌块：weightx 吸收剩余宽度并靠左（anchor=WEST 自带垂直居中）
+        bar.add(titleBlock, GridBagConstraints().apply {
+            gridx = 0
+            gridy = 0
+            weightx = 1.0
+            anchor = GridBagConstraints.WEST
+        })
+
+        if (onGearClick != null) {
+            // 齿轮：锚 EAST 顶到右缘、垂直居中；钉死 16×16 屏蔽 LAF 按钮尺寸差异
+            bar.add(JButton(AllIcons.General.Settings).apply {
+                isFocusable = false
+                isContentAreaFilled = false
+                isBorderPainted = false
+                margin = JBUI.insets(0)
+                preferredSize = Dimension(16, 16)
+                minimumSize = Dimension(16, 16)
+                maximumSize = Dimension(16, 16)
+                cursor = java.awt.Cursor.getPredefinedCursor(java.awt.Cursor.HAND_CURSOR)
+                toolTipText = CodeSenseBundle.message("popup.settings.tooltip")
+                addActionListener { onGearClick() }
+            }, GridBagConstraints().apply {
+                gridx = 1
+                gridy = 0
+                anchor = GridBagConstraints.EAST
+                insets = java.awt.Insets(0, 6, 0, 0)
+            })
+        }
+        return bar
     }
 
     /** 功能小标题（品牌栏下方，灰色小字；底部留 8px 与内容区隔） */

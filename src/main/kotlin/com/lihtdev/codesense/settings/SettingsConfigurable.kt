@@ -377,6 +377,23 @@ class SettingsConfigurable : Configurable {
         refreshTable()
     }
 
+    /**
+     * 删除前的确认弹框（正文带模型名），用户点击「删除」返回 true，「取消」返回 false。
+     * 平台 2024.2 的 Messages 无 Component 父窗口重载，传 null Project 会以当前窗口为父。
+     */
+    private fun confirmRemoveProvider(config: AiProviderConfig): Boolean {
+        val displayName = config.modelDisplayName.ifBlank { config.model }
+        val result = Messages.showYesNoDialog(
+            null as Project?,
+            CodeSenseBundle.message("settings.deleteProvider.confirm", displayName),
+            CodeSenseBundle.message("settings.deleteProvider.confirm.title"),
+            CodeSenseBundle.message("settings.deleteProvider.confirm.ok"),
+            CodeSenseBundle.message("settings.deleteProvider.confirm.cancel"),
+            Messages.getQuestionIcon(),
+        )
+        return result == Messages.YES
+    }
+
     /** 启用 / 停用 */
     private fun toggleEnabled(config: AiProviderConfig) {
         config.enabled = !config.enabled
@@ -397,7 +414,12 @@ class SettingsConfigurable : Configurable {
         val p = java.awt.Point(e.x - cellRect.x, e.y - cellRect.y)
         when {
             actionRenderer.editBounds.contains(p) -> editProvider(config)
-            actionRenderer.deleteBounds.contains(p) -> removeProvider(config)
+            actionRenderer.deleteBounds.contains(p) -> {
+                // 删除前先弹确认框，避免误删
+                if (confirmRemoveProvider(config)) {
+                    removeProvider(config)
+                }
+            }
             actionRenderer.toggleBounds.contains(p) -> toggleEnabled(config)
             // 点击空白/按钮间隙：不触发任何操作
         }
