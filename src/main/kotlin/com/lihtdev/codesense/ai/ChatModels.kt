@@ -45,3 +45,15 @@ data class ChatError(
         val type: String? = null,
     )
 }
+
+/**
+ * models 列表响应体（OpenAI 兼容格式）。
+ * GET {baseUrl}/models → {"object":"list","data":[{"id":"model-a",...},...]}
+ */
+data class ModelsResponse(
+    val data: List<ModelInfo> = emptyList(),
+) {
+    data class ModelInfo(
+        val id: String = "",
+    )
+}

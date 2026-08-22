@@ -71,6 +71,41 @@ class OpenAiCompatClient : AiClient {
             ?: throw AiClientException(CodeSenseBundle.message("error.emptyResponse"))
     }
 
+    override fun listModels(provider: AiProviderConfig, apiKey: String): List<String> {
+        val baseUrl = provider.baseUrl.trim().trimEnd('/')
+        if (baseUrl.isBlank()) {
+            throw AiClientException(CodeSenseBundle.message("error.baseUrlNotSet"))
+        }
+        val request = HttpRequest.newBuilder()
+            .uri(URI.create("$baseUrl/models"))
+            .timeout(Duration.ofSeconds(REQUEST_TIMEOUT_SECONDS))
+            .header("Authorization", "Bearer $apiKey")
+            .GET()
+            .build()
+
+        val response: HttpResponse<String> = try {
+            httpClient.send(request, HttpResponse.BodyHandlers.ofString())
+        } catch (e: InterruptedException) {
+            throw e // 用户取消，直接向上传递
+        } catch (e: Exception) {
+            throw AiClientException(
+                CodeSenseBundle.message("error.networkFailed", e.javaClass.simpleName, e.message ?: ""),
+                e,
+            )
+        }
+
+        if (response.statusCode() / 100 != 2) {
+            throw AiClientException(mapError(response.statusCode(), response.body()))
+        }
+
+        val parsed = try {
+            gson.fromJson(response.body(), ModelsResponse::class.java)
+        } catch (e: Exception) {
+            throw AiClientException(CodeSenseBundle.message("error.parseFailed", e.message ?: ""), e)
+        }
+        return parsed.data.map { it.id.trim() }.filter { it.isNotEmpty() }
+    }
+
     /** 将 HTTP 状态码与错误体映射为用户可读提示 */
     private fun mapError(status: Int, body: String): String {
         val detail = extractErrorMessage(body)

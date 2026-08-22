@@ -23,19 +23,21 @@ import javax.swing.ListSelectionModel
 /**
  * 模型切换弹出面板：两级窗口。
  * 一级窗口：显示当前模型 + 「切换模型」按钮。
- * 二级窗口：按厂商分组显示模型列表。
+ * 二级窗口：按提供商分组显示模型列表。
  */
 object ModelSwitcherPopup {
 
     /** 列表条目：分组标题或模型条目 */
     sealed class ListEntry {
-        /** 厂商分组标题（不可选） */
+        /** 提供商分组标题（不可选） */
         data class Header(val displayName: String) : ListEntry()
         /** 模型条目 */
         data class Model(
+            val id: String,
             val providerId: String,
             val displayName: String,
             val model: String,
+            val modelDisplayName: String,
         ) : ListEntry()
     }
 
@@ -56,7 +58,7 @@ object ModelSwitcherPopup {
         panel.add(titleLabel, BorderLayout.NORTH)
 
         if (provider != null) {
-            val modelLabel = JBLabel("${provider.displayName} / ${provider.model}").apply {
+            val modelLabel = JBLabel("${provider.displayName} / ${provider.modelDisplayName.ifBlank { provider.model }}").apply {
                 font = font.deriveFont(Font.PLAIN, 12f)
                 border = JBUI.Borders.empty(8, 0)
             }
@@ -91,7 +93,7 @@ object ModelSwitcherPopup {
     }
 
     /**
-     * 二级窗口：按厂商分组显示模型列表，位置居中。
+     * 二级窗口：按提供商分组显示模型列表，位置居中。
      */
     private fun showSecondLevel(project: Project, owner: Component, onChanged: () -> Unit) {
         val settings = AppSettings.instance
@@ -102,11 +104,20 @@ object ModelSwitcherPopup {
             return
         }
 
-        // 构建分组列表
+        // 按 providerId 分组构建列表（仅启用条目）
         val entries = mutableListOf<ListEntry>()
-        for (provider in providers) {
-            entries.add(ListEntry.Header(provider.displayName))
-            entries.add(ListEntry.Model(provider.id, provider.displayName, provider.model))
+        val grouped = providers.filter { it.enabled }.groupBy { it.providerId }
+        for ((_, group) in grouped) {
+            val first = group.first()
+            entries.add(ListEntry.Header(first.displayName))
+            group.forEach { p ->
+                entries.add(
+                    ListEntry.Model(
+                        p.id, p.providerId, p.displayName, p.model,
+                        p.modelDisplayName.ifBlank { p.model },
+                    ),
+                )
+            }
         }
 
         val listModel = CollectionListModel<ListEntry>()
@@ -120,11 +131,7 @@ object ModelSwitcherPopup {
             // 选中当前激活的模型条目
             for (i in 0 until entries.size) {
                 val entry = entries[i]
-                if (entry is ListEntry.Model &&
-                    entry.providerId == activeId &&
-                    activeProvider != null &&
-                    entry.model == activeProvider.model
-                ) {
+                if (entry is ListEntry.Model && entry.id == activeId) {
                     setSelectedIndex(i)
                     break
                 }
@@ -157,7 +164,7 @@ object ModelSwitcherPopup {
             }
             val modelEntry = entry as? ListEntry.Model ?: return@addListSelectionListener
             popup.closeOk(null)
-            settings.setActiveProvider(modelEntry.providerId)
+            settings.setActiveProvider(modelEntry.id)
             ApplicationManager.getApplication().messageBus
                 .syncPublisher(AppSettingsListener.TOPIC)
                 .providerChanged()
@@ -188,7 +195,7 @@ object ModelSwitcherPopup {
                     delegate.isOpaque = true
                 }
                 is ListEntry.Model -> {
-                    delegate.text = "    ${value.model}"
+                    delegate.text = "    ${value.modelDisplayName}"
                     delegate.font = delegate.font.deriveFont(Font.PLAIN, 12f)
                     delegate.border = JBUI.Borders.empty(2, 10, 4, 10)
                     if (isSelected) {

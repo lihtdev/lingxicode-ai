@@ -40,7 +40,7 @@ class AiInvocationService(private val client: AiClient = OpenAiCompatClient()) {
             notifyWarning(project, CodeSenseBundle.message("notification.noProvider"))
             return
         }
-        val apiKey = AppSettings.getApiKey(provider.id)
+        val apiKey = AppSettings.getApiKey(provider.providerId)
         if (apiKey.isNullOrBlank()) {
             notifyWarning(project, CodeSenseBundle.message("notification.noApiKey", provider.displayName))
             return

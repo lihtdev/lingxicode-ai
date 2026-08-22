@@ -54,7 +54,8 @@ class OpenAiCompatClientTest {
     }
 
     private fun provider() = AiProviderConfig(
-        id = "test",
+        id = "test:test-model",
+        providerId = "test",
         displayName = "测试厂商",
         planType = ProviderPlanType.PAY_AS_YOU_GO,
         baseUrl = baseUrl,

@@ -25,8 +25,8 @@ data class AppSettingsState(
 }
 
 /**
- * 应用级设置服务：厂商列表、当前生效厂商、输出语言、界面语言、diff 上限。
- * API Key 经 PasswordSafe 安全存储，不落盘。
+ * 应用级设置服务：模型条目列表、当前生效模型、输出语言、界面语言、diff 上限。
+ * API Key 经 PasswordSafe 按 providerId 安全存储，不落盘。
  */
 @State(name = "CodeSenseSettings", storages = [Storage("codesense-ai.xml")])
 class AppSettings : PersistentStateComponent<AppSettingsState> {
@@ -37,12 +37,14 @@ class AppSettings : PersistentStateComponent<AppSettingsState> {
 
     override fun loadState(state: AppSettingsState) {
         myState = state
+        // 兼容旧数据：旧格式每条记录一个提供商，providerId 为空时回填为 id
+        myState.providers.forEach { if (it.providerId.isBlank()) it.providerId = it.id }
     }
 
-    /** 当前生效的厂商配置（找不到 activeId 时回退到第一个） */
+    /** 当前生效的模型条目（找不到 activeId 或已停用时，回退到第一个启用的条目） */
     fun activeProvider(): AiProviderConfig? =
-        myState.providers.firstOrNull { it.id == myState.activeProviderId }
-            ?: myState.providers.firstOrNull()
+        myState.providers.firstOrNull { it.id == myState.activeProviderId && it.enabled }
+            ?: myState.providers.firstOrNull { it.enabled }
 
     fun setActiveProvider(id: String) {
         myState.activeProviderId = id
@@ -53,14 +55,14 @@ class AppSettings : PersistentStateComponent<AppSettingsState> {
         val instance: AppSettings
             get() = ApplicationManager.getApplication().getService(AppSettings::class.java)
 
-        /** PasswordSafe 服务名（与厂商 id 组合定位凭据） */
+        /** PasswordSafe 服务名（与 providerId 组合定位凭据） */
         private const val SERVICE_NAME = "CodeSenseAI"
 
-        /** 从 PasswordSafe 读取某厂商的 API Key */
+        /** 从 PasswordSafe 读取某提供商的 API Key */
         fun getApiKey(providerId: String): String? =
             PasswordSafe.instance.get(CredentialAttributes(SERVICE_NAME, providerId))?.getPasswordAsString()
 
-        /** 保存（或清除，传 null/空）某厂商的 API Key */
+        /** 保存（或清除，传 null/空）某提供商的 API Key */
         fun setApiKey(providerId: String, apiKey: String?) {
             val attributes = CredentialAttributes(SERVICE_NAME, providerId)
             val credentials = apiKey?.takeIf { it.isNotBlank() }?.let { Credentials(providerId, it) }

@@ -9,7 +9,7 @@ data class PlanPreset(
 )
 
 /**
- * 厂商预设：可用类型（各类型对应 baseUrl）与预设模型列表。
+ * 提供商预设：可用类型（各类型对应 baseUrl）与预设模型列表。
  */
 data class ProviderPreset(
     val id: String,
@@ -19,7 +19,7 @@ data class ProviderPreset(
 )
 
 /**
- * 预设厂商常量。
+ * 预设提供商常量。
  * 数据来源：用户提供的官方配置（2026-08），API 调用统一使用 OpenAI 兼容协议。
  */
 object ProviderPresets {
@@ -99,16 +99,4 @@ object ProviderPresets {
 
     /** 按 id 查找预设 */
     fun byId(id: String): ProviderPreset? = ALL.firstOrNull { it.id == id }
-
-    /** 由预设生成默认厂商配置列表（取每个厂商的第一个类型与第一个模型） */
-    fun defaultProviders(): List<AiProviderConfig> = ALL.map { preset ->
-        val firstPlan = preset.plans.first()
-        AiProviderConfig(
-            id = preset.id,
-            displayName = preset.displayName,
-            planType = firstPlan.type,
-            baseUrl = firstPlan.baseUrl,
-            model = preset.models.first(),
-        )
-    }
 }
