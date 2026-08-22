@@ -1453,8 +1453,10 @@ class SettingsConfigurable : Configurable {
             hover = mt?.hoverRow == row
             cellBackground = if (hover) table.selectionBackground else table.background
             cellForeground = if (rowEnabled) table.foreground else JBColor.GRAY
-            // 与编辑弹窗 chip 字号保持一致
-            font = font.deriveFont(11f)
+            // 与编辑弹窗 chip 字号保持一致。
+            // 渲染器组件不在组件层级树中，getFont() 首帧可能为 null，需安全回退到表格字体。
+            val baseFont = font ?: table.font ?: java.awt.Font(java.awt.Font.SANS_SERIF, java.awt.Font.PLAIN, 12)
+            font = baseFont.deriveFont(11f)
             // 截断时 tooltip 展示完整标签
             val cellWidth = table.getCellRect(row, column, false).width
             toolTipText = if (tags.isNotEmpty() && wouldTruncate(cellWidth)) {
