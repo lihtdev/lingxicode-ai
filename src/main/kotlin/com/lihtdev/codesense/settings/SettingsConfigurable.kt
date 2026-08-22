@@ -17,6 +17,7 @@ import com.intellij.ui.components.JBLabel
 import com.intellij.ui.components.JBList
 import com.intellij.ui.components.JBPasswordField
 import com.intellij.ui.table.JBTable
+import com.intellij.util.IconUtil
 import com.intellij.util.ui.FormBuilder
 import com.intellij.util.ui.JBUI
 import com.lihtdev.codesense.ai.ChatMessage
@@ -127,32 +128,39 @@ class SettingsConfigurable : Configurable {
 
     // ---- 子面板构建 ----
 
-    /** 顶部品牌区：Logo + 英文名 + 中文名 + 版本/作者横向排列 */
+    /** 顶部品牌区：Logo + 中英文名同行 + 版本/作者 */
     private fun createHeaderPanel(): JPanel {
         val panel = JPanel(BorderLayout())
         panel.border = JBUI.Borders.empty(0, 0, 12, 0)
 
+        // Logo：用 IconUtil 缩放放大（原始 SVG 为 16×16，放大到 96×96）
         val rawIcon = IconLoader.getIcon("/icons/codesense.svg", SettingsConfigurable::class.java)
-        val iconSize = 72
-        val iconLabel = JLabel(rawIcon).apply {
+        val scaledIcon = IconUtil.scale(rawIcon, panel, 6.0f)
+        val iconLabel = JLabel(scaledIcon).apply {
             border = JBUI.Borders.emptyRight(16)
-            minimumSize = Dimension(iconSize, iconSize)
-            preferredSize = Dimension(iconSize, iconSize)
-            maximumSize = Dimension(iconSize, iconSize)
         }
 
+        // 文字区域
         val textPanel = JPanel().apply {
             layout = javax.swing.BoxLayout(this, javax.swing.BoxLayout.Y_AXIS)
         }
 
+        // 第一行：英文名 + 中文名（同一行，字号一致）
         val englishLabel = JLabel(CodeSenseBundle.message("settings.header.englishName")).apply {
             font = font.deriveFont(Font.BOLD, 20f)
         }
         val chineseLabel = JLabel(CodeSenseBundle.message("settings.header.chineseName")).apply {
-            font = font.deriveFont(Font.PLAIN, 18f)
-            foreground = JBColor.GRAY
+            font = font.deriveFont(Font.PLAIN, 20f)
+            // 不显式设置前景色：与英文名一致，继承主题默认文字颜色
         }
+        val nameRow = JPanel(FlowLayout(FlowLayout.LEFT, 10, 0)).apply {
+            add(englishLabel)
+            add(chineseLabel)
+        }
+        // BoxLayout(Y_AXIS) 下默认居中，需显式左对齐（第二行同理）
+        nameRow.alignmentX = Component.LEFT_ALIGNMENT
 
+        // 第二行：版本 + 作者
         val version = try {
             PluginManagerCore.getPlugin(PluginId.getId("com.lihtdev.codesense"))?.version ?: "0.1.0"
         } catch (_: Exception) {
@@ -164,10 +172,11 @@ class SettingsConfigurable : Configurable {
             font = font.deriveFont(Font.PLAIN, 12f)
             foreground = JBColor.GRAY
         }
+        // 第二行（版本/作者）与名称行左对齐
+        metaLabel.alignmentX = Component.LEFT_ALIGNMENT
 
-        textPanel.add(englishLabel)
-        textPanel.add(chineseLabel)
-        textPanel.add(javax.swing.Box.createVerticalStrut(2))
+        textPanel.add(nameRow)
+        textPanel.add(javax.swing.Box.createVerticalStrut(4))
         textPanel.add(metaLabel)
 
         val leftPanel = JPanel(FlowLayout(FlowLayout.LEFT, 0, 0)).apply {
@@ -899,6 +908,8 @@ class SettingsConfigurable : Configurable {
             row: Int, column: Int,
         ): Component {
             val c = super.getTableCellRendererComponent(table, value, isSelected, hasFocus, row, column)
+            // 去掉单元格聚焦/选中时的边框（用户看到的选择框）
+            (c as JComponent).border = null
             val mt = table as? ModelTable
             val hover = mt?.hoverRow == row
             // hover 高亮背景（行不可选，无选中背景）
