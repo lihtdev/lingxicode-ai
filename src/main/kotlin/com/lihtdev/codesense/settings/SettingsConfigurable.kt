@@ -1,6 +1,7 @@
 package com.lihtdev.codesense.settings
 
 import com.intellij.ide.plugins.PluginManagerCore
+import com.intellij.icons.AllIcons
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.extensions.PluginId
 import com.intellij.openapi.options.Configurable
@@ -26,8 +27,10 @@ import java.awt.Component
 import java.awt.Dimension
 import java.awt.FlowLayout
 import java.awt.Font
+import java.awt.Rectangle
 import java.awt.event.MouseAdapter
 import java.awt.event.MouseEvent
+import java.awt.event.MouseMotionAdapter
 import java.util.UUID
 import javax.swing.DefaultComboBoxModel
 import javax.swing.DefaultListModel
@@ -37,11 +40,13 @@ import javax.swing.JComboBox
 import javax.swing.JComponent
 import javax.swing.JLabel
 import javax.swing.JPanel
+import javax.swing.JScrollPane
 import javax.swing.JTable
 import javax.swing.JTextField
 import javax.swing.ListCellRenderer
 import javax.swing.ListSelectionModel
 import javax.swing.table.AbstractTableModel
+import javax.swing.table.DefaultTableCellRenderer
 import javax.swing.table.TableCellRenderer
 
 /**
@@ -61,8 +66,8 @@ class SettingsConfigurable : Configurable {
 
     // ---- UI 组件 ----
     private val tableModel = ModelTableModel()
-    private val table = JBTable(tableModel)
     private val actionRenderer = ActionCellRenderer()
+    private val table = ModelTable(tableModel, actionRenderer)
 
     // 全局设置
     private val outputLanguageCombo = JComboBox(
@@ -81,15 +86,23 @@ class SettingsConfigurable : Configurable {
     private val mainPanel: JComponent
 
     init {
-        // 表格配置
-        table.selectionModel.selectionMode = ListSelectionModel.SINGLE_SELECTION
-        table.rowHeight = 30
+        // 表格配置（行不可选，仅 hover 高亮，见 ModelTable）
+        table.rowHeight = 32
         table.tableHeader.reorderingAllowed = false
-        table.columnModel.getColumn(0).preferredWidth = 150
-        table.columnModel.getColumn(1).preferredWidth = 160
-        table.columnModel.getColumn(2).preferredWidth = 140
-        table.columnModel.getColumn(3).preferredWidth = 120
-        table.columnModel.getColumn(4).preferredWidth = 190
+        table.autoResizeMode = JTable.AUTO_RESIZE_OFF
+        table.fillsViewportHeight = true
+        setFixedColumnWidth(0, COL_DISPLAY_NAME_W)
+        setFixedColumnWidth(1, COL_MODEL_W)
+        setFixedColumnWidth(2, COL_TAGS_W)
+        setFixedColumnWidth(3, COL_PROVIDER_W)
+        setFixedColumnWidth(4, COL_ACTION_W)
+        // 数据列：停用行灰色 + hover 高亮
+        val dataRenderer = GrayRowRenderer(tableModel)
+        table.columnModel.getColumn(0).cellRenderer = dataRenderer
+        table.columnModel.getColumn(1).cellRenderer = dataRenderer
+        table.columnModel.getColumn(2).cellRenderer = dataRenderer
+        table.columnModel.getColumn(3).cellRenderer = dataRenderer
+        // 操作列：图标按钮
         table.columnModel.getColumn(4).cellRenderer = actionRenderer
         table.addMouseListener(object : MouseAdapter() {
             override fun mouseClicked(e: MouseEvent) {
@@ -180,8 +193,12 @@ class SettingsConfigurable : Configurable {
             add(addButton, BorderLayout.EAST)
         }
 
-        val scrollPane = javax.swing.JScrollPane(table).apply {
-            preferredSize = Dimension(760, 260)
+        val scrollPane = JScrollPane(table).apply {
+            preferredSize = Dimension(TABLE_WIDTH, TABLE_HEIGHT)
+            minimumSize = Dimension(TABLE_WIDTH, TABLE_HEIGHT)
+            maximumSize = Dimension(TABLE_WIDTH, TABLE_HEIGHT)
+            horizontalScrollBarPolicy = JScrollPane.HORIZONTAL_SCROLLBAR_AS_NEEDED
+            verticalScrollBarPolicy = JScrollPane.VERTICAL_SCROLLBAR_AS_NEEDED
         }
 
         val panel = JPanel(BorderLayout()).apply {
@@ -241,6 +258,14 @@ class SettingsConfigurable : Configurable {
         tableModel.refresh(workingProviders)
     }
 
+    /** 固定某列宽度（min=max=preferred） */
+    private fun setFixedColumnWidth(column: Int, width: Int) {
+        val col = table.columnModel.getColumn(column)
+        col.minWidth = width
+        col.maxWidth = width
+        col.preferredWidth = width
+    }
+
     /** 弹出添加模型对话框（批量勾选预设/API 获取的模型） */
     private fun showAddProviderDialog() {
         val dialog = AddProviderDialog(mainPanel)
@@ -295,7 +320,7 @@ class SettingsConfigurable : Configurable {
         refreshTable()
     }
 
-    /** 处理表格操作列点击 */
+    /** 处理表格操作列点击：仅在精确命中按钮 bounds 时才触发 */
     private fun handleTableClick(e: MouseEvent) {
         if (e.button != MouseEvent.BUTTON1) return
         val row = table.rowAtPoint(e.point)
@@ -303,11 +328,12 @@ class SettingsConfigurable : Configurable {
         if (row < 0 || col != ACTION_COLUMN) return
         val config = workingProviders.getOrNull(row) ?: return
         val cellRect = table.getCellRect(row, col, true)
-        val x = e.x - cellRect.x
+        val p = java.awt.Point(e.x - cellRect.x, e.y - cellRect.y)
         when {
-            x < ACTION_EDIT_W -> editProvider(config)
-            x < ACTION_EDIT_W + ACTION_GAP + ACTION_DELETE_W -> removeProvider(config)
-            else -> toggleEnabled(config)
+            actionRenderer.editBounds.contains(p) -> editProvider(config)
+            actionRenderer.deleteBounds.contains(p) -> removeProvider(config)
+            actionRenderer.toggleBounds.contains(p) -> toggleEnabled(config)
+            // 点击空白/按钮间隙：不触发任何操作
         }
     }
 
@@ -804,39 +830,145 @@ class SettingsConfigurable : Configurable {
         }
 
         override fun isCellEditable(rowIndex: Int, columnIndex: Int): Boolean = false
+
+        fun isRowEnabled(row: Int): Boolean = providers.getOrNull(row)?.enabled ?: true
+
+        fun getConfigAt(row: Int): AiProviderConfig? = providers.getOrNull(row)
     }
 
-    // ---- 操作列渲染器 ----
+    // ---- 自定义表格：行不可选 + hover 高亮 + 操作列 tooltip ----
+
+    private class ModelTable(
+        model: ModelTableModel,
+        private val actionRenderer: ActionCellRenderer,
+    ) : JBTable(model) {
+
+        var hoverRow: Int = -1
+            private set
+
+        init {
+            rowSelectionAllowed = false
+            cellSelectionEnabled = false
+            columnSelectionAllowed = false
+            addMouseMotionListener(object : MouseMotionAdapter() {
+                override fun mouseMoved(e: MouseEvent) {
+                    val row = rowAtPoint(e.point)
+                    if (row != hoverRow) {
+                        hoverRow = row
+                        repaint()
+                    }
+                }
+            })
+            addMouseListener(object : MouseAdapter() {
+                override fun mouseExited(e: MouseEvent) {
+                    if (hoverRow != -1) {
+                        hoverRow = -1
+                        repaint()
+                    }
+                }
+            })
+        }
+
+        override fun getToolTipText(e: MouseEvent): String? {
+            val col = columnAtPoint(e.point)
+            if (col == ACTION_COLUMN) {
+                val row = rowAtPoint(e.point)
+                val enabled = (model as? ModelTableModel)?.isRowEnabled(row) ?: true
+                val cellRect = getCellRect(row, col, true)
+                val p = java.awt.Point(e.x - cellRect.x, e.y - cellRect.y)
+                return when {
+                    actionRenderer.editBounds.contains(p) -> CodeSenseBundle.message("settings.action.edit")
+                    actionRenderer.deleteBounds.contains(p) -> CodeSenseBundle.message("settings.action.delete")
+                    actionRenderer.toggleBounds.contains(p) -> if (enabled) {
+                        CodeSenseBundle.message("settings.action.disable")
+                    } else {
+                        CodeSenseBundle.message("settings.action.enable")
+                    }
+                    else -> null
+                }
+            }
+            return super.getToolTipText(e)
+        }
+    }
+
+    // ---- 数据列渲染器（停用置灰 + hover 高亮） ----
+
+    private class GrayRowRenderer(private val model: ModelTableModel) : DefaultTableCellRenderer() {
+        override fun getTableCellRendererComponent(
+            table: JTable, value: Any?, isSelected: Boolean, hasFocus: Boolean,
+            row: Int, column: Int,
+        ): Component {
+            val c = super.getTableCellRendererComponent(table, value, isSelected, hasFocus, row, column)
+            val mt = table as? ModelTable
+            val hover = mt?.hoverRow == row
+            // hover 高亮背景（行不可选，无选中背景）
+            c.background = if (hover) table.selectionBackground else table.background
+            // 停用行：置灰前景
+            c.foreground = if (!model.isRowEnabled(row)) JBColor.GRAY else table.foreground
+            return c
+        }
+    }
+
+    // ---- 操作列渲染器（图标按钮 + hover 高亮 + 停用置灰） ----
 
     private class ActionCellRenderer : TableCellRenderer {
-        private val panel = JPanel(FlowLayout(FlowLayout.LEFT, ACTION_GAP, 3))
+        private val panel = JPanel(FlowLayout(FlowLayout.LEFT, ACTION_GAP, 4))
         private val editButton = JButton()
         private val deleteButton = JButton()
         private val toggleButton = JButton()
 
+        private val editIcon = AllIcons.Actions.Edit
+        private val editDisabledIcon = IconLoader.getDisabledIcon(editIcon)
+        private val deleteIcon = AllIcons.General.Delete
+        private val deleteDisabledIcon = IconLoader.getDisabledIcon(deleteIcon)
+        private val pauseIcon = AllIcons.Actions.Pause
+        private val resumeIcon = AllIcons.Actions.Resume
+
+        // 最近一次渲染时各按钮在单元格内的实际 bounds（用于精确命中判断）
+        var editBounds: Rectangle = Rectangle()
+        var deleteBounds: Rectangle = Rectangle()
+        var toggleBounds: Rectangle = Rectangle()
+
         init {
+            editButton.preferredSize = Dimension(ACTION_ICON_W, 22)
+            deleteButton.preferredSize = Dimension(ACTION_ICON_W, 22)
+            toggleButton.preferredSize = Dimension(ACTION_ICON_W, 22)
+            editButton.isFocusable = false
+            deleteButton.isFocusable = false
+            toggleButton.isFocusable = false
+            editButton.isContentAreaFilled = false
+            deleteButton.isContentAreaFilled = false
+            toggleButton.isContentAreaFilled = false
+            editButton.isBorderPainted = false
+            deleteButton.isBorderPainted = false
+            toggleButton.isBorderPainted = false
             panel.add(editButton)
             panel.add(deleteButton)
             panel.add(toggleButton)
         }
 
         override fun getTableCellRendererComponent(
-            table: JTable?, value: Any?, isSelected: Boolean, hasFocus: Boolean,
+            table: JTable, value: Any?, isSelected: Boolean, hasFocus: Boolean,
             row: Int, column: Int,
         ): Component {
             val config = value as? AiProviderConfig
-            editButton.text = CodeSenseBundle.message("settings.action.edit")
-            deleteButton.text = CodeSenseBundle.message("settings.action.delete")
-            toggleButton.text = if (config?.enabled == true) {
-                CodeSenseBundle.message("settings.action.disable")
-            } else {
-                CodeSenseBundle.message("settings.action.enable")
-            }
-            editButton.preferredSize = Dimension(ACTION_EDIT_W, 22)
-            deleteButton.preferredSize = Dimension(ACTION_DELETE_W, 22)
-            toggleButton.preferredSize = Dimension(ACTION_TOGGLE_W, 22)
-            panel.background = if (isSelected) table?.selectionBackground else table?.background
+            val enabled = config?.enabled == true
+            // 停用行：编辑/删除图标置灰
+            editButton.icon = if (enabled) editIcon else editDisabledIcon
+            deleteButton.icon = if (enabled) deleteIcon else deleteDisabledIcon
+            // 启用/停用切换：启用行显示「暂停」图标，停用行显示「恢复」图标
+            toggleButton.icon = if (enabled) pauseIcon else resumeIcon
+            // hover 高亮背景
+            val mt = table as? ModelTable
+            val hover = mt?.hoverRow == row
+            panel.background = if (hover) table.selectionBackground else table.background
             panel.isOpaque = true
+            // 触发布局并记录按钮实际 bounds
+            panel.size = table.getCellRect(row, column, true).size
+            panel.doLayout()
+            editBounds = editButton.bounds
+            deleteBounds = deleteButton.bounds
+            toggleBounds = toggleButton.bounds
             return panel
         }
     }
@@ -912,10 +1044,19 @@ class SettingsConfigurable : Configurable {
 
     companion object {
         private const val ACTION_COLUMN = 4
-        private const val ACTION_GAP = 6
-        private const val ACTION_EDIT_W = 48
-        private const val ACTION_DELETE_W = 48
-        private const val ACTION_TOGGLE_W = 64
+        private const val ACTION_GAP = 4
+        private const val ACTION_ICON_W = 26
+
+        // 列固定宽度
+        private const val COL_DISPLAY_NAME_W = 170
+        private const val COL_MODEL_W = 200
+        private const val COL_TAGS_W = 140
+        private const val COL_PROVIDER_W = 130
+        private const val COL_ACTION_W = 100
+
+        // 表格固定尺寸
+        private const val TABLE_WIDTH = 700
+        private const val TABLE_HEIGHT = 300
 
         /** 打开设置页（供外部跳转） */
         fun open(project: Project?) {
