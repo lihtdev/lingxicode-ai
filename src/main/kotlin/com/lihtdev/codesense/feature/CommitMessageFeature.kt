@@ -1,7 +1,7 @@
 package com.lihtdev.codesense.feature
 
+import com.intellij.openapi.vcs.CommitMessageI
 import com.intellij.openapi.vcs.changes.Change
-import com.intellij.openapi.vcs.commit.message.CommitMessage
 import com.lihtdev.codesense.ai.ChatMessage
 import com.lihtdev.codesense.ai.PromptBuilder
 import com.lihtdev.codesense.git.DiffTextBuilder
@@ -11,7 +11,7 @@ import com.lihtdev.codesense.settings.AppSettingsState
  * 「提交信息生成」功能的上下文。
  */
 data class CommitFeatureContext(
-    val commitMessage: CommitMessage,
+    val commitMessage: CommitMessageI,
     val changes: List<Change>,
 )
 

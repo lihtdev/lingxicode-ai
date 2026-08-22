@@ -17,7 +17,7 @@ CodeSense AI 是面向 JetBrains IDE 的 AI 能力集插件。v1 交付「AI 提
 | 提交信息格式 | Conventional Commits（`type: 描述`），描述默认中文可切英文 |
 | 交互入口 | 提交对话框消息区 toolbar 按钮；编辑器右键预留「CodeSense AI」功能组 |
 | 变更范围 | 跟随提交对话框勾选文件；无勾选回退默认 changelist |
-| 目标平台 | 全系列 JetBrains IDE 2024.1+（仅依赖 `com.intellij.modules.platform`，sinceBuild 241） |
+| 目标平台 | 全系列 JetBrains IDE 2024.2+（仅依赖 `com.intellij.modules.platform`，sinceBuild 242） |
 | 技术栈 | Kotlin + IntelliJ Platform Gradle Plugin 2.x + java.net.http.HttpClient + Gson（平台捆绑）+ Task.Backgroundable |
 
 ## 2. 架构
@@ -87,11 +87,11 @@ interface AiFeature {
 - 纯逻辑单测（JUnit 5）：SimpleLineDiff / DiffFormatter / PromptBuilder / ResponseCleaner / ChatModels（DTO 序列化）；
 - AI 客户端测试：JDK 内置 HttpServer 模拟端点，验证请求结构/鉴权头/响应解析/错误映射/配置缺失提示；
 - 平台集成：runIde 沙箱端到端（按钮渲染、真实调用、回填）；
-- 兼容性：verifyPlugin（2024.1+）。
+- 兼容性：verifyPlugin（2024.2+）。
 
 ## 7. 待验证点（实施期确认）
 
-1. `Vcs.Commit.Message.Toolbar` group id 在 241 中的正确性（备选：查平台 vcs-impl plugin.xml / 旧模态 `Vcs.MessageActionGroup`）；
+1. `Vcs.Commit.Message.Toolbar` group id 在 242 中的正确性（备选：查平台 vcs-impl plugin.xml / 旧模态 `Vcs.MessageActionGroup`）；
 2. `VcsDataKeys.CHANGES` 在非模态提交上下文的行为（备选：ChangeListManager）；
 3. Gson 直接引用是否触发 verifier 报警（备选：implementation 依赖随包分发）；
 4. PasswordSafe `CredentialAttributes` 构造签名以实际 SDK 为准。

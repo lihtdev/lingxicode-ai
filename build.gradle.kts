@@ -1,9 +1,11 @@
 // CodeSense AI（灵犀码）— JetBrains IDE 插件构建脚本
-// 技术栈：Kotlin + IntelliJ Platform Gradle Plugin 2.x，目标 2024.1+（sinceBuild 241）
+// 技术栈：Kotlin + IntelliJ Platform Gradle Plugin 2.x，目标 2024.2+（sinceBuild 242）
+import org.jetbrains.intellij.platform.gradle.IntelliJPlatformType
+
 plugins {
     id("java")
-    id("org.jetbrains.kotlin.jvm") version "2.1.20"
-    id("org.jetbrains.intellij.platform") version "2.5.2"
+    id("org.jetbrains.kotlin.jvm") version "2.4.10"
+    id("org.jetbrains.intellij.platform") version "2.18.1"
 }
 
 group = "com.lihtdev.codesense"
@@ -18,11 +20,10 @@ repositories {
 
 dependencies {
     intellijPlatform {
-        // 以 IntelliJ IDEA Community 2024.1 作为编译目标平台（仅依赖 platform 模块，全系列 IDE 可用）
-        create(IntelliJPlatformType.IntellijIdeaCommunity, "2024.1")
+        // 以 IntelliJ IDEA Community 2024.2 作为编译目标平台（仅依赖 platform 模块，全系列 IDE 可用）
+        create(IntelliJPlatformType.IntellijIdeaCommunity, "2024.2")
         pluginVerifier()
         zipSigner()
-        instrumentationTools()
     }
     // 单测依赖（主代码的 Gson 由平台提供；单测环境需自行引入）
     testImplementation("org.junit.jupiter:junit-jupiter:5.11.4")
@@ -31,8 +32,8 @@ dependencies {
 }
 
 kotlin {
-    // 2024.1 运行于 JBR 17
-    jvmToolchain(17)
+    // 2024.2 运行于 JBR 21
+    jvmToolchain(21)
 }
 
 tasks.test {
@@ -45,7 +46,7 @@ intellijPlatform {
         name = "CodeSense AI"
         version = project.version.toString()
         ideaVersion {
-            sinceBuild = "241"
+            sinceBuild = "242"
             untilBuild = provider { null }
         }
     }

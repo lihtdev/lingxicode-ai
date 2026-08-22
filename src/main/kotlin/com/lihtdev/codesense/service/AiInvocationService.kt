@@ -4,12 +4,13 @@ import com.intellij.notification.Notification
 import com.intellij.notification.NotificationType
 import com.intellij.notification.Notifications
 import com.intellij.openapi.application.ApplicationManager
+import com.intellij.openapi.application.ReadAction
 import com.intellij.openapi.progress.ProgressIndicator
-import com.intellij.openapi.progress.ReadTask
 import com.intellij.openapi.progress.Task
 import com.intellij.openapi.project.Project
 import com.lihtdev.codesense.ai.AiClient
 import com.lihtdev.codesense.ai.AiClientException
+import com.lihtdev.codesense.ai.ChatMessage
 import com.lihtdev.codesense.ai.OpenAiCompatClient
 import com.lihtdev.codesense.ai.ResponseCleaner
 import com.lihtdev.codesense.feature.AiFeature
@@ -46,10 +47,10 @@ class AiInvocationService(private val client: AiClient = OpenAiCompatClient()) {
 
         object : Task.Backgroundable(project, taskTitle, true) {
             override fun run(indicator: ProgressIndicator) {
-                // 组 prompt（可能读取文件内容，需要读动作；用写动作优先级避免阻塞 UI）
-                val messages = ReadTask
-                    .computeOnPooledThreadInReadActionWithWriteActionPriority { feature.buildPrompt(context, settings.state) }
-                    .get()
+                // 组 prompt（可能读取文件内容，需要读动作）
+                val messages = ReadAction.compute<List<ChatMessage>, RuntimeException> {
+                    feature.buildPrompt(context, settings.state)
+                }
                 indicator.checkCanceled()
                 val raw = client.chat(provider, apiKey, messages)
                 indicator.checkCanceled()

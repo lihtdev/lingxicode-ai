@@ -38,7 +38,7 @@
 
 ## 环境要求
 
-- JetBrains IDE 2024.1+（IDEA / PyCharm / GoLand / WebStorm 等全系列）
+- JetBrains IDE 2024.2+（IDEA / PyCharm / GoLand / WebStorm 等全系列）
 
 ## 开发
 
@@ -56,7 +56,7 @@
 ./gradlew verifyPlugin
 ```
 
-技术栈：Kotlin + Gradle IntelliJ Platform Gradle Plugin 2.x（目标 2024.1+，sinceBuild 241）。
+技术栈：Kotlin + Gradle IntelliJ Platform Gradle Plugin 2.x（目标 2024.2+，sinceBuild 242）。
 
 ## 架构
 

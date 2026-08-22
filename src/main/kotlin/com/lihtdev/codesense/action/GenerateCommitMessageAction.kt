@@ -1,7 +1,7 @@
 package com.lihtdev.codesense.action
 
-import com.intellij.openapi.action.AnAction
-import com.intellij.openapi.action.AnActionEvent
+import com.intellij.openapi.actionSystem.AnAction
+import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.vcs.VcsDataKeys
 import com.lihtdev.codesense.feature.CommitFeatureContext
 import com.lihtdev.codesense.feature.CommitMessageFeature
@@ -18,7 +18,7 @@ class GenerateCommitMessageAction : AnAction() {
 
     override fun actionPerformed(e: AnActionEvent) {
         val project = e.project ?: return
-        val commitMessage = e.getData(VcsDataKeys.COMMIT_MESSAGE) ?: return
+        val commitMessage = e.getData(VcsDataKeys.COMMIT_MESSAGE_CONTROL) ?: return
         val changes = ChangeCollector.collect(e)
         if (changes.isEmpty()) {
             AiInvocationService.notifyWarning(project, "没有可提交的变更，请先勾选要提交的文件")
@@ -30,6 +30,6 @@ class GenerateCommitMessageAction : AnAction() {
 
     override fun update(e: AnActionEvent) {
         // 仅在提交消息上下文中可用
-        e.presentation.isEnabled = e.getData(VcsDataKeys.COMMIT_MESSAGE) != null
+        e.presentation.isEnabled = e.getData(VcsDataKeys.COMMIT_MESSAGE_CONTROL) != null
     }
 }

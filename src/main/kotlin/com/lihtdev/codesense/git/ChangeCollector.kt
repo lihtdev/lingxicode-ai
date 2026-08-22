@@ -1,6 +1,6 @@
 package com.lihtdev.codesense.git
 
-import com.intellij.openapi.action.AnActionEvent
+import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.vcs.VcsDataKeys
 import com.intellij.openapi.vcs.changes.Change
 import com.intellij.openapi.vcs.changes.ChangeListManager
