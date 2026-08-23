@@ -525,6 +525,11 @@ class SettingsConfigurable : Configurable {
         private val manualModelField = JTextField(18).apply {
             minimumSize = Dimension(120, preferredSize.height)
         }
+        private val selectAllButton = JButton(CodeSenseBundle.message("settings.addProvider.selectAll")).apply {
+            // 初始模型列表为空：先置灰，待列表非空后由 setModelItems / manualAddModel 恢复
+            isEnabled = false
+            addActionListener { toggleSelectAll() }
+        }
 
         /** 程序化加载期间为 true，防止监听器误触发 */
         private var isLoading = false
@@ -558,7 +563,7 @@ class SettingsConfigurable : Configurable {
             init()
         }
 
-        /** 小图标按钮：16×16、无边框填充、手型光标、带功能提示（参照弹窗齿轮/表格操作列按钮样式） */
+        /** 小图标按钮：16×16、无边框填充、手型光标、带功能提示（参照弹窗齿轮/表格操作列按钮样式）；禁用态显式置灰图标 */
         private fun iconButton(icon: Icon, tipKey: String?, action: () -> Unit): JButton =
             JButton(icon).apply {
                 isFocusable = false
@@ -568,6 +573,8 @@ class SettingsConfigurable : Configurable {
                 preferredSize = Dimension(16, 16)
                 minimumSize = Dimension(16, 16)
                 maximumSize = Dimension(16, 16)
+                // 显式设置禁用图标：不支持操作的场景按钮置灰（与平台 LAF 内置禁用渲染不冲突）
+                disabledIcon = IconLoader.getDisabledIcon(icon)
                 cursor = java.awt.Cursor.getPredefinedCursor(java.awt.Cursor.HAND_CURSOR)
                 tipKey?.let { toolTipText = CodeSenseBundle.message(it) }
                 addActionListener { action() }
@@ -580,8 +587,8 @@ class SettingsConfigurable : Configurable {
                 border = JBUI.Borders.empty(0, 0, 8, 0)
             }
 
-            // 提供商操作按钮行：新增 / 编辑 / 删除（删除仅对自定义提供商开放）
-            val providerActions = JPanel(FlowLayout(FlowLayout.LEFT, 4, 0)).apply {
+            // 提供商操作按钮行：新增 / 编辑 / 删除（删除仅对自定义提供商开放）；间距 10px 避免图标按钮过于紧凑
+            val providerActions = JPanel(FlowLayout(FlowLayout.LEFT, 10, 0)).apply {
                 add(addProviderButton)
                 add(editProviderButton)
                 add(deleteProviderButton)
@@ -594,9 +601,6 @@ class SettingsConfigurable : Configurable {
             // 模型列表操作行 + 手动添加行
             val fetchButton = JButton(CodeSenseBundle.message("settings.addProvider.fetchModels")).apply {
                 addActionListener { fetchModels() }
-            }
-            val selectAllButton = JButton(CodeSenseBundle.message("settings.addProvider.selectAll")).apply {
-                addActionListener { toggleSelectAll() }
             }
             val buttonRow = JPanel(FlowLayout(FlowLayout.LEFT, 4, 0)).apply {
                 add(fetchButton)
@@ -801,10 +805,11 @@ class SettingsConfigurable : Configurable {
             rebuildProviderCombo()
         }
 
-        /** 填充模型复选框列表 */
+        /** 填充模型复选框列表；列表为空时「全选/全不选」无操作对象，置灰 */
         private fun setModelItems(models: List<String>, selected: Boolean) {
             modelListModel.removeAllElements()
             models.forEach { modelListModel.addElement(CheckableModel(it, selected)) }
+            selectAllButton.isEnabled = models.isNotEmpty()
         }
 
         /** 全选 / 全不选 */
@@ -822,6 +827,8 @@ class SettingsConfigurable : Configurable {
             val name = manualModelField.text.trim()
             if (name.isEmpty()) return
             modelListModel.addElement(CheckableModel(name, selected = true))
+            // 列表非空后恢复「全选/全不选」可用
+            selectAllButton.isEnabled = true
             manualModelField.text = ""
         }
 
@@ -1949,7 +1956,7 @@ class SettingsConfigurable : Configurable {
         private const val TAGS_COLUMN = 1
         private const val TYPE_COLUMN = 3
         private const val ACTION_COLUMN = 4
-        private const val ACTION_GAP = 4
+        private const val ACTION_GAP = 8
         private const val ACTION_ICON_W = 26
 
         // 列固定宽度
