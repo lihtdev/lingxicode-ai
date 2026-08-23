@@ -3,6 +3,7 @@ package com.lihtdev.codesense.settings
 import com.intellij.ide.plugins.PluginManagerCore
 import com.intellij.icons.AllIcons
 import com.intellij.openapi.application.ApplicationManager
+import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.extensions.PluginId
 import com.intellij.openapi.options.Configurable
 import com.intellij.openapi.options.ShowSettingsUtil
@@ -101,6 +102,9 @@ private class ChipBorder : javax.swing.border.AbstractBorder() {
  * 套餐类型展示文案（表格「类型」列 / 类型下拉渲染器 / 重复提示共用）。
  * 本文件内各嵌套类直接调用共享函数 [providerPlanTypeLabel]（见 ProviderComboOption.kt）。
  */
+
+/** 设置页日志（用于提供商信息刷新等 UI 路径的异常诊断） */
+private val LOG = Logger.getInstance(SettingsConfigurable::class.java)
 
 /**
  * 设置页（Tools → CodeSense AI）。
@@ -352,6 +356,9 @@ class SettingsConfigurable : Configurable {
             .map { it.copy(plans = it.plans.toMutableList()) }
             .toMutableList()
         workingActiveId = state.activeProviderId
+        // 先迁移历史 base 槽 Key 到各类型精确槽并删除 base 槽（幂等），
+        // 再按精确槽预填，保证同名不同类型彻底独立、各自可清空
+        AppSettings.migrateLegacyApiKeys(workingProviders.map { it.providerId })
         workingApiKeys.clear()
         workingProviders.forEach { workingApiKeys[it.providerId] = AppSettings.getApiKey(it.providerId) }
         outputLanguageCombo.selectedIndex = if (state.outputLanguage == "en") 1 else 0
@@ -742,44 +749,47 @@ class SettingsConfigurable : Configurable {
         /** 选中提供商变化：刷新只读展示、按钮可用态、API Key 预填，并清空模型列表 */
         private fun onProviderSelected() {
             if (isLoading) return
-            val option = selectedOption() ?: return
-            // 切换提供商前，把当前输入暂存到上一个提供商的编辑副本
-            // （同名不同类型是不同提供商：providerId 带类型后缀互不相同，切换即视为切换提供商）
+            val option = selectedOption()
+            if (option == null) {
+                // 在 IntelliJ LAF 的特定事件时序下，selectedItem 可能在事件触发时尚未更新；
+                // 保留上一提供商内容，避免信息区空白
+                LOG.warn("selectedOption 为 null，保持上一提供商信息")
+                return
+            }
             val prevId = selectedProviderId
-            val providerChanged = prevId != option.providerId
-            if (providerChanged && prevId != null) {
-                editedKeys[prevId] = String(apiKeyField.password)
-            }
-            selectedProviderId = option.providerId
-            isLoading = true
+            val providerChanged = prevId != null && prevId != option.providerId
             try {
-                providerValueLabel.text = option.displayName
-                // 仅真正切换提供商时预填 Key：已编辑值优先，其次设置页工作副本，末尾回退 PasswordSafe
-                // （回退覆盖「曾删光某提供商模型但保留 Key」的场景，见 removeProvider 不删 Key 的约定）；
-                // 同一提供商被重新选中（如提供商编辑器重建下拉）时保留用户当前输入
+                // 切换提供商前，把当前输入暂存到上一个提供商的编辑副本
                 if (providerChanged) {
-                    val newKey = editedKeys[option.providerId]
-                        ?: initialApiKeys[option.providerId]
-                        ?: AppSettings.getApiKey(option.providerId)
-                    apiKeyField.text = newKey ?: ""
+                    editedKeys[prevId] = String(apiKeyField.password)
                 }
-                // 每条记录一个类型：类型与接口地址只读展示直接取选项
-                planTypeValueLabel.text = providerPlanTypeLabel(option.type)
-                baseUrlValueLabel.text = option.baseUrl
-                editProviderButton.isEnabled = option.isCustom
-                deleteProviderButton.isEnabled = option.isCustom
-                // 删除按钮提示随选中项变化：自定义可删 / 预设仅提示限制
-                deleteProviderButton.toolTipText = CodeSenseBundle.message(
-                    if (option.isCustom) {
-                        "settings.addProvider.deleteProvider"
-                    } else {
-                        "settings.addProvider.deleteProvider.tooltip"
-                    },
-                )
-                setModelItems(emptyList(), selected = false)
-            } finally {
-                isLoading = false
+                selectedProviderId = option.providerId
+                refreshProviderInfo(option, providerChanged)
+            } catch (e: Exception) {
+                // 任何单选项异常都不能吞掉整块刷新：记录堆栈并复位（信息区保持可继续交互）
+                LOG.warn("刷新提供商信息失败", e)
             }
+        }
+
+        private fun refreshProviderInfo(option: ProviderComboOption, providerChanged: Boolean) {
+            providerValueLabel.text = option.displayName
+            // 仅真正切换提供商时预填 Key：已编辑值优先，其次设置页工作副本，末尾回退 PasswordSafe
+            if (providerChanged) {
+                apiKeyField.text = editedKeys[option.providerId]
+                    ?: initialApiKeys[option.providerId]
+                    ?: AppSettings.getApiKey(option.providerId)
+                    ?: ""
+            }
+            // 每条记录一个类型：类型与接口地址只读展示直接取选项
+            planTypeValueLabel.text = providerPlanTypeLabel(option.type)
+            baseUrlValueLabel.text = option.baseUrl
+            editProviderButton.isEnabled = option.isCustom
+            deleteProviderButton.isEnabled = option.isCustom
+            deleteProviderButton.toolTipText = CodeSenseBundle.message(
+                if (option.isCustom) "settings.addProvider.deleteProvider"
+                else "settings.addProvider.deleteProvider.tooltip",
+            )
+            setModelItems(emptyList(), selected = false)
         }
 
         /**

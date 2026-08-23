@@ -70,7 +70,7 @@ class AppSettings : PersistentStateComponent<AppSettingsState> {
         /**
          * 从 PasswordSafe 读取某提供商的 API Key。
          * 优先读精确槽（`qwen:TOKEN_PLAN`）；为空时回退读 base 槽（`qwen`），
-         * 兼容迁移前的旧 Key 存储。
+         * 兼容迁移前的旧 Key 存储（迁移见 [migrateLegacyApiKeys]）。
          */
         fun getApiKey(providerId: String): String? {
             val exact = PasswordSafe.instance
@@ -89,16 +89,53 @@ class AppSettings : PersistentStateComponent<AppSettingsState> {
 
         /**
          * 保存（或清除，传 null/空）某提供商的 API Key。
-         * 写入精确槽（按「提供商 × 类型」独立）；同时清除 base 槽，
-         * 避免回退读到陈旧 Key（含「清空 Key」场景）。
+         * 写入时写到精确槽并清理历史 base 槽（防陈旧回退）；清空时只清本类型精确槽，
+         * 不影响同名其它类型（迁移后各类型槽位已独立）。
          */
         fun setApiKey(providerId: String, apiKey: String?) {
-            val attributes = CredentialAttributes(SERVICE_NAME, providerId)
             val credentials = apiKey?.takeIf { it.isNotBlank() }?.let { Credentials(providerId, it) }
-            PasswordSafe.instance.set(attributes, credentials)
-            val base = ProviderIds.baseOf(providerId)
-            if (base != providerId) {
-                PasswordSafe.instance.set(CredentialAttributes(SERVICE_NAME, base), null)
+            PasswordSafe.instance.set(CredentialAttributes(SERVICE_NAME, providerId), credentials)
+            if (credentials != null) {
+                val base = ProviderIds.baseOf(providerId)
+                if (base != providerId) {
+                    PasswordSafe.instance.set(CredentialAttributes(SERVICE_NAME, base), null)
+                }
+            }
+        }
+
+        /**
+         * 迁移历史 base 槽 API Key 到各类型的精确槽，随后删除 base 槽，
+         * 使同名不同类型彻底独立（各自可清空、互不影响）。幂等，可重复调用。
+         * 由设置页 reset() 在预填 Key 前调用；只处理 [providerIds]（在用条目）涉及的 base。
+         */
+        fun migrateLegacyApiKeys(providerIds: Collection<String>) {
+            val bases = LinkedHashSet<String>()
+            providerIds.forEach { pid ->
+                val base = ProviderIds.baseOf(pid)
+                if (base != pid) bases.add(base)
+            }
+            if (bases.isEmpty()) return
+            providerIds.forEach { pid ->
+                val base = ProviderIds.baseOf(pid)
+                if (base != pid) {
+                    val exact = PasswordSafe.instance
+                        .get(CredentialAttributes(SERVICE_NAME, pid))
+                        ?.getPasswordAsString()
+                    if (exact == null) {
+                        val legacy = PasswordSafe.instance
+                            .get(CredentialAttributes(SERVICE_NAME, base))
+                            ?.getPasswordAsString()
+                        if (legacy != null) {
+                            PasswordSafe.instance.set(
+                                CredentialAttributes(SERVICE_NAME, pid),
+                                Credentials(pid, legacy),
+                            )
+                        }
+                    }
+                }
+            }
+            bases.forEach {
+                PasswordSafe.instance.set(CredentialAttributes(SERVICE_NAME, it), null)
             }
         }
     }
