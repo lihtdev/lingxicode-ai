@@ -81,7 +81,7 @@ private fun planTypeLabel(type: ProviderPlanType): String = when (type) {
  * 设置页（Tools → CodeSense AI）。
  *
  * 布局：顶部品牌区 → 模型表格（模型/标签/供应商/类型/操作）→ 底部全局设置。
- * 编辑、删除、启用停用均在表格操作列完成；添加经「添加模型」弹窗批量选择。
+ * 编辑、删除均在表格操作列完成；添加经「添加模型」弹窗批量选择。
  */
 class SettingsConfigurable : Configurable {
 
@@ -125,8 +125,8 @@ class SettingsConfigurable : Configurable {
         setFixedColumnWidth(2, COL_PROVIDER_W)
         setFixedColumnWidth(TYPE_COLUMN, COL_TYPE_W)
         setFixedColumnWidth(ACTION_COLUMN, COL_ACTION_W)
-        // 数据列：停用行灰色 + hover 高亮（标签列改用 chip 渲染器）
-        val dataRenderer = GrayRowRenderer(tableModel)
+        // 数据列：hover 高亮（标签列改用 chip 渲染器）
+        val dataRenderer = GrayRowRenderer()
         table.columnModel.getColumn(0).cellRenderer = dataRenderer
         table.columnModel.getColumn(TAGS_COLUMN).cellRenderer = tagsRenderer
         table.columnModel.getColumn(2).cellRenderer = dataRenderer
@@ -354,7 +354,7 @@ class SettingsConfigurable : Configurable {
                     workingApiKeys[config.providerId] = dialog.apiKey
                 }
             }
-            if (workingActiveId.isBlank() && configs.firstOrNull()?.enabled == true) {
+            if (workingActiveId.isBlank()) {
                 workingActiveId = configs.first().id
             }
             refreshTable()
@@ -382,7 +382,7 @@ class SettingsConfigurable : Configurable {
         workingProviders.remove(config)
         // 不删除 apiKey：同一提供商的其他模型条目可能共享该 key
         if (workingActiveId == config.id) {
-            workingActiveId = workingProviders.firstOrNull { it.enabled }?.id ?: ""
+            workingActiveId = workingProviders.firstOrNull()?.id ?: ""
         }
         refreshTable()
     }
@@ -404,15 +404,6 @@ class SettingsConfigurable : Configurable {
         return result == Messages.YES
     }
 
-    /** 启用 / 停用 */
-    private fun toggleEnabled(config: AiProviderConfig) {
-        config.enabled = !config.enabled
-        if (!config.enabled && workingActiveId == config.id) {
-            workingActiveId = workingProviders.firstOrNull { it.enabled }?.id ?: ""
-        }
-        refreshTable()
-    }
-
     /** 处理表格操作列点击：仅在精确命中按钮 bounds 时才触发 */
     private fun handleTableClick(e: MouseEvent) {
         if (e.button != MouseEvent.BUTTON1) return
@@ -430,7 +421,6 @@ class SettingsConfigurable : Configurable {
                     removeProvider(config)
                 }
             }
-            actionRenderer.toggleBounds.contains(p) -> toggleEnabled(config)
             // 点击空白/按钮间隙：不触发任何操作
         }
     }
@@ -1040,7 +1030,7 @@ class SettingsConfigurable : Configurable {
     // ---- 编辑模型对话框 ----
 
     /**
-     * 编辑模型对话框：针对单个模型条目修改模型/标签/提供商/套餐/baseUrl/apiKey/启用态。
+     * 编辑模型对话框：修改模型/标签/API Key；提供商、类型、接口地址只读展示。
      */
     private class EditProviderDialog(
         parent: JComponent,
@@ -1058,20 +1048,8 @@ class SettingsConfigurable : Configurable {
             minimumSize = Dimension(75, 30)
         }
         private val tagsPanel = TagsPanel()
-        private val providerNameField = JTextField(30).apply {
-            minimumSize = Dimension(200, 30)
-        }
-        private val planTypeCombo = JComboBox<ProviderPlanType>().apply {
-            minimumSize = Dimension(140, 30)
-        }
-        private val baseUrlField = JTextField(30).apply {
-            minimumSize = Dimension(220, 30)
-        }
         private val apiKeyField = JBPasswordField().apply {
             minimumSize = Dimension(200, 30)
-        }
-        private val enabledCheckbox = JCheckBox(CodeSenseBundle.message("settings.editProvider.enabled")).apply {
-            minimumSize = Dimension(180, 30)
         }
         private val testButton = JButton(CodeSenseBundle.message("settings.testConnection")).apply {
             addActionListener { testConnection() }
@@ -1084,8 +1062,6 @@ class SettingsConfigurable : Configurable {
 
         init {
             title = CodeSenseBundle.message("settings.editProvider.title")
-            planTypeCombo.renderer = PlanRenderer()
-            planTypeCombo.addActionListener { onPlanTypeChanged() }
             setOKButtonText(CodeSenseBundle.message("settings.addProvider.confirm"))
             setCancelButtonText(CodeSenseBundle.message("settings.addProvider.cancel"))
             loadInitial()
@@ -1093,13 +1069,15 @@ class SettingsConfigurable : Configurable {
         }
 
         override fun createCenterPanel(): JComponent {
-            val baseUrlWithNote = JPanel(BorderLayout()).apply {
-                add(baseUrlField, BorderLayout.NORTH)
-                add(JBLabel(CodeSenseBundle.message("settings.addProvider.protocolNote")).apply {
-                    font = font.deriveFont(Font.PLAIN, 11f)
-                    foreground = JBColor.GRAY
-                    border = JBUI.Borders.empty(2, 0, 0, 0)
-                }, BorderLayout.SOUTH)
+            // 提供商信息区只读展示（仅 API Key 可编辑）
+            val providerValueLabel = JBLabel(initialConfig.displayName).apply {
+                minimumSize = Dimension(200, preferredSize.height)
+            }
+            val planTypeValueLabel = JBLabel(planTypeLabel(initialConfig.planType)).apply {
+                minimumSize = Dimension(200, preferredSize.height)
+            }
+            val baseUrlValueLabel = JBLabel(initialConfig.baseUrl).apply {
+                minimumSize = Dimension(200, preferredSize.height)
             }
 
             // 模型下拉 + 「获取模型」按钮
@@ -1127,33 +1105,48 @@ class SettingsConfigurable : Configurable {
             val tagsLabel = JLabel(CodeSenseBundle.message("settings.editProvider.tags")).apply {
                 minimumSize = preferredSize
             }
-            val providerLabel = JLabel(SettingsConfigurable.requiredLabel("settings.provider")).apply {
+            val providerLabel = JLabel(CodeSenseBundle.message("settings.provider")).apply {
                 minimumSize = preferredSize
             }
             val planTypeLabel = JLabel(CodeSenseBundle.message("settings.planType")).apply {
                 minimumSize = preferredSize
             }
-            val baseUrlLabel = JLabel(SettingsConfigurable.requiredLabel("settings.baseUrl")).apply {
+            val baseUrlLabel = JLabel(CodeSenseBundle.message("settings.baseUrl")).apply {
                 minimumSize = preferredSize
             }
             val apiKeyLabel = JLabel(CodeSenseBundle.message("settings.apiKey")).apply {
                 minimumSize = preferredSize
             }
 
+            // 区块标题：加粗灰色小字，视觉上把「提供商信息」与「模型信息」分成两区
+            val providerSectionCaption = JBLabel(CodeSenseBundle.message("settings.editProvider.section.provider")).apply {
+                font = font.deriveFont(Font.BOLD, 12f)
+                foreground = JBColor.GRAY
+            }
+            val modelSectionCaption = JBLabel(CodeSenseBundle.message("settings.editProvider.section.model")).apply {
+                font = font.deriveFont(Font.BOLD, 12f)
+                foreground = JBColor.GRAY
+            }
+
+            // 表单分两区：提供商信息（提供商/类型/接口地址只读、API Key 可编辑）→ 模型信息（模型/标签）
             return FormBuilder.createFormBuilder()
+                .addComponent(providerSectionCaption)
+                .addVerticalGap(4)
+                .addLabeledComponent(providerLabel, providerValueLabel)
+                .addVerticalGap(6)
+                .addLabeledComponent(planTypeLabel, planTypeValueLabel)
+                .addVerticalGap(6)
+                .addLabeledComponent(baseUrlLabel, baseUrlValueLabel)
+                .addVerticalGap(6)
+                .addLabeledComponent(apiKeyLabel, apiKeyField)
+                .addVerticalGap(10)
+                .addSeparator()
+                .addVerticalGap(10)
+                .addComponent(modelSectionCaption)
+                .addVerticalGap(4)
                 .addLabeledComponent(modelLabel, modelRow)
                 .addVerticalGap(6)
                 .addLabeledComponent(tagsLabel, tagsWithHint)
-                .addVerticalGap(6)
-                .addLabeledComponent(providerLabel, providerNameField)
-                .addVerticalGap(6)
-                .addLabeledComponent(planTypeLabel, planTypeCombo)
-                .addVerticalGap(6)
-                .addLabeledComponent(baseUrlLabel, baseUrlWithNote)
-                .addVerticalGap(6)
-                .addLabeledComponent(apiKeyLabel, apiKeyField)
-                .addVerticalGap(6)
-                .addLabeledComponent(JLabel(), enabledCheckbox)
                 .panel
         }
 
@@ -1176,12 +1169,6 @@ class SettingsConfigurable : Configurable {
         }
 
         private fun loadInitial() {
-            val preset = ProviderPresets.byId(initialConfig.providerId)
-            val planTypes = preset?.plans?.map { it.type }?.distinct()
-                ?: listOf(ProviderPlanType.PAY_AS_YOU_GO)
-            planTypeCombo.model = DefaultComboBoxModel(planTypes.toTypedArray())
-            planTypeCombo.selectedItem = if (planTypes.contains(initialConfig.planType)) initialConfig.planType else planTypes.first()
-            baseUrlField.text = initialConfig.baseUrl
             // 模型下拉初始仅含当前模型：不预置默认模型列表，用户可手动输入或点「获取模型」加载
             val currentModel = initialConfig.model.takeIf { it.isNotBlank() }
             modelCombo.model = DefaultComboBoxModel(
@@ -1189,23 +1176,12 @@ class SettingsConfigurable : Configurable {
             )
             modelCombo.selectedItem = currentModel
             tagsPanel.setTags(initialConfig.tags)
-            providerNameField.text = initialConfig.displayName
             apiKeyField.text = initialApiKey ?: ""
-            enabledCheckbox.isSelected = initialConfig.enabled
-        }
-
-        /** 切换类型：自动带出该类型对应的 baseUrl */
-        private fun onPlanTypeChanged() {
-            val preset = ProviderPresets.byId(initialConfig.providerId) ?: return
-            val planType = planTypeCombo.selectedItem as? ProviderPlanType ?: return
-            preset.plans.firstOrNull { it.type == planType }?.let { plan ->
-                baseUrlField.text = plan.baseUrl
-            }
         }
 
         /** 测试当前配置的连通性（后台发一条最小请求） */
         private fun testConnection() {
-            val baseUrl = baseUrlField.text.trim()
+            val baseUrl = initialConfig.baseUrl
             val model = (modelCombo.editor.item as? String ?: "").trim()
             if (baseUrl.isEmpty() || model.isEmpty()) {
                 Messages.showWarningDialog(
@@ -1227,7 +1203,7 @@ class SettingsConfigurable : Configurable {
             val provider = AiProviderConfig(
                 id = "test",
                 providerId = "test",
-                displayName = providerNameField.text.trim(),
+                displayName = initialConfig.displayName,
                 baseUrl = baseUrl,
                 model = model,
             )
@@ -1264,7 +1240,7 @@ class SettingsConfigurable : Configurable {
 
         /** 通过 API（GET {baseUrl}/models）获取模型列表 */
         private fun fetchModels() {
-            val baseUrl = baseUrlField.text.trim()
+            val baseUrl = initialConfig.baseUrl
             if (baseUrl.isEmpty()) {
                 Messages.showWarningDialog(
                     contentPanel,
@@ -1285,7 +1261,7 @@ class SettingsConfigurable : Configurable {
             val provider = AiProviderConfig(
                 id = "fetch",
                 providerId = "fetch",
-                displayName = providerNameField.text.trim(),
+                displayName = initialConfig.displayName,
                 baseUrl = baseUrl,
                 model = "",
             )
@@ -1324,15 +1300,6 @@ class SettingsConfigurable : Configurable {
 
         override fun doOKAction() {
             val model = (modelCombo.editor.item as? String ?: "").trim()
-            val providerName = providerNameField.text.trim()
-            if (providerName.isEmpty()) {
-                Messages.showWarningDialog(
-                    contentPanel,
-                    CodeSenseBundle.message("settings.addProvider.name.empty"),
-                    CodeSenseBundle.message("settings.editProvider.title"),
-                )
-                return
-            }
             if (model.isEmpty()) {
                 Messages.showWarningDialog(
                     contentPanel,
@@ -1341,29 +1308,19 @@ class SettingsConfigurable : Configurable {
                 )
                 return
             }
-            val baseUrl = baseUrlField.text.trim()
-            if (baseUrl.isEmpty()) {
-                Messages.showWarningDialog(
-                    contentPanel,
-                    CodeSenseBundle.message("settings.baseUrl.empty"),
-                    CodeSenseBundle.message("settings.editProvider.title"),
-                )
-                return
-            }
-            val planType = planTypeCombo.selectedItem as? ProviderPlanType ?: ProviderPlanType.PAY_AS_YOU_GO
-            // 「供应商 + 类型 + 模型」唯一性校验：与其它条目重复时阻止保存
+            // 「供应商 + 类型 + 模型」唯一性校验：与其它条目重复时阻止保存（供应商/类型源自只读的既有配置）
             val duplicate = existingProviders.any {
                 it.id != initialConfig.id &&
                     ModelUniqueness.key(it.displayName, it.planType, it.model) ==
-                    ModelUniqueness.key(providerName, planType, model)
+                    ModelUniqueness.key(initialConfig.displayName, initialConfig.planType, model)
             }
             if (duplicate) {
                 Messages.showWarningDialog(
                     contentPanel,
                     CodeSenseBundle.message(
                         "settings.editProvider.duplicate",
-                        providerName,
-                        planTypeLabel(planType),
+                        initialConfig.displayName,
+                        planTypeLabel(initialConfig.planType),
                         model,
                     ),
                     CodeSenseBundle.message("settings.editProvider.title"),
@@ -1374,10 +1331,6 @@ class SettingsConfigurable : Configurable {
             resultConfig = initialConfig.copy(
                 model = model,
                 tags = tags,
-                displayName = providerName,
-                planType = planType,
-                baseUrl = baseUrl,
-                enabled = enabledCheckbox.isSelected,
             )
             resultApiKey = String(apiKeyField.password)
             super.doOKAction()
@@ -1422,8 +1375,6 @@ class SettingsConfigurable : Configurable {
 
         override fun isCellEditable(rowIndex: Int, columnIndex: Int): Boolean = false
 
-        fun isRowEnabled(row: Int): Boolean = providers.getOrNull(row)?.enabled ?: true
-
         fun getConfigAt(row: Int): AiProviderConfig? = providers.getOrNull(row)
     }
 
@@ -1464,17 +1415,11 @@ class SettingsConfigurable : Configurable {
             val col = columnAtPoint(e.point)
             if (col == ACTION_COLUMN) {
                 val row = rowAtPoint(e.point)
-                val enabled = (model as? ModelTableModel)?.isRowEnabled(row) ?: true
                 val cellRect = getCellRect(row, col, true)
                 val p = java.awt.Point(e.x - cellRect.x, e.y - cellRect.y)
                 return when {
                     actionRenderer.editBounds.contains(p) -> CodeSenseBundle.message("settings.action.edit")
                     actionRenderer.deleteBounds.contains(p) -> CodeSenseBundle.message("settings.action.delete")
-                    actionRenderer.toggleBounds.contains(p) -> if (enabled) {
-                        CodeSenseBundle.message("settings.action.disable")
-                    } else {
-                        CodeSenseBundle.message("settings.action.enable")
-                    }
                     else -> null
                 }
             }
@@ -1482,9 +1427,9 @@ class SettingsConfigurable : Configurable {
         }
     }
 
-    // ---- 数据列渲染器（停用置灰 + hover 高亮） ----
+    // ---- 数据列渲染器（hover 高亮） ----
 
-    private class GrayRowRenderer(private val model: ModelTableModel) : DefaultTableCellRenderer() {
+    private class GrayRowRenderer : DefaultTableCellRenderer() {
         override fun getTableCellRendererComponent(
             table: JTable, value: Any?, isSelected: Boolean, hasFocus: Boolean,
             row: Int, column: Int,
@@ -1496,8 +1441,7 @@ class SettingsConfigurable : Configurable {
             val hover = mt?.hoverRow == row
             // hover 高亮背景（行不可选，无选中背景）
             c.background = if (hover) table.selectionBackground else table.background
-            // 停用行：置灰前景
-            c.foreground = if (!model.isRowEnabled(row)) JBColor.GRAY else table.foreground
+            c.foreground = table.foreground
             return c
         }
     }
@@ -1508,13 +1452,11 @@ class SettingsConfigurable : Configurable {
      * 标签列渲染器：把标签逐个绘制为带圆角边框的 chip。
      * - 无标签：单元格留空；
      * - 放不下：截断并绘制「…」，悬停时 tooltip 展示完整标签；
-     * - 停用行：chip 文本置灰；
      * - hover 行：单元格背景高亮（与其它列一致）。
      */
     private class TagsCellRenderer : JComponent(), TableCellRenderer {
 
         private var tags: List<String> = emptyList()
-        private var rowEnabled = true
         private var hover = false
         private var cellBackground: java.awt.Color = JBColor.background()
         private var cellForeground: java.awt.Color = JBColor.foreground()
@@ -1525,11 +1467,10 @@ class SettingsConfigurable : Configurable {
         ): Component {
             val config = value as? AiProviderConfig
             tags = config?.tags ?: emptyList()
-            rowEnabled = config?.enabled ?: true
             val mt = table as? ModelTable
             hover = mt?.hoverRow == row
             cellBackground = if (hover) table.selectionBackground else table.background
-            cellForeground = if (rowEnabled) table.foreground else JBColor.GRAY
+            cellForeground = table.foreground
             // 与编辑弹窗 chip 字号保持一致。
             // 渲染器组件不在组件层级树中，getFont() 首帧可能为 null，需安全回退到表格字体。
             val baseFont = font ?: table.font ?: java.awt.Font(java.awt.Font.SANS_SERIF, java.awt.Font.PLAIN, 12)
@@ -1609,55 +1550,39 @@ class SettingsConfigurable : Configurable {
         }
     }
 
-    // ---- 操作列渲染器（图标按钮 + hover 高亮 + 停用置灰） ----
+    // ---- 操作列渲染器（图标按钮 + hover 高亮） ----
 
     private class ActionCellRenderer : TableCellRenderer {
         private val panel = JPanel(FlowLayout(FlowLayout.LEFT, ACTION_GAP, 4))
         private val editButton = JButton()
         private val deleteButton = JButton()
-        private val toggleButton = JButton()
 
         private val editIcon = AllIcons.Actions.Edit
-        private val editDisabledIcon = IconLoader.getDisabledIcon(editIcon)
         private val deleteIcon = AllIcons.General.Delete
-        private val deleteDisabledIcon = IconLoader.getDisabledIcon(deleteIcon)
-        private val pauseIcon = AllIcons.Actions.Pause
-        private val resumeIcon = AllIcons.Actions.Resume
 
         // 最近一次渲染时各按钮在单元格内的实际 bounds（用于精确命中判断）
         var editBounds: Rectangle = Rectangle()
         var deleteBounds: Rectangle = Rectangle()
-        var toggleBounds: Rectangle = Rectangle()
 
         init {
             editButton.preferredSize = Dimension(ACTION_ICON_W, 22)
             deleteButton.preferredSize = Dimension(ACTION_ICON_W, 22)
-            toggleButton.preferredSize = Dimension(ACTION_ICON_W, 22)
             editButton.isFocusable = false
             deleteButton.isFocusable = false
-            toggleButton.isFocusable = false
             editButton.isContentAreaFilled = false
             deleteButton.isContentAreaFilled = false
-            toggleButton.isContentAreaFilled = false
             editButton.isBorderPainted = false
             deleteButton.isBorderPainted = false
-            toggleButton.isBorderPainted = false
             panel.add(editButton)
             panel.add(deleteButton)
-            panel.add(toggleButton)
         }
 
         override fun getTableCellRendererComponent(
             table: JTable, value: Any?, isSelected: Boolean, hasFocus: Boolean,
             row: Int, column: Int,
         ): Component {
-            val config = value as? AiProviderConfig
-            val enabled = config?.enabled == true
-            // 停用行：编辑/删除图标置灰
-            editButton.icon = if (enabled) editIcon else editDisabledIcon
-            deleteButton.icon = if (enabled) deleteIcon else deleteDisabledIcon
-            // 启用/停用切换：启用行显示「暂停」图标，停用行显示「恢复」图标
-            toggleButton.icon = if (enabled) pauseIcon else resumeIcon
+            editButton.icon = editIcon
+            deleteButton.icon = deleteIcon
             // hover 高亮背景
             val mt = table as? ModelTable
             val hover = mt?.hoverRow == row
@@ -1668,7 +1593,6 @@ class SettingsConfigurable : Configurable {
             panel.doLayout()
             editBounds = editButton.bounds
             deleteBounds = deleteButton.bounds
-            toggleBounds = toggleButton.bounds
             return panel
         }
     }
@@ -1752,10 +1676,10 @@ class SettingsConfigurable : Configurable {
         private const val COL_TYPE_W = 100
         private const val COL_TAGS_W = 140
         private const val COL_PROVIDER_W = 130
-        private const val COL_ACTION_W = 100
+        private const val COL_ACTION_W = 68
 
         // 表格固定尺寸
-        private const val TABLE_WIDTH = 670
+        private const val TABLE_WIDTH = 638
         private const val TABLE_HEIGHT = 200
 
         /** 打开设置页（供外部跳转） */

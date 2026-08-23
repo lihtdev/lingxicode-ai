@@ -41,10 +41,10 @@ class AppSettings : PersistentStateComponent<AppSettingsState> {
         myState.providers.forEach { if (it.providerId.isBlank()) it.providerId = it.id }
     }
 
-    /** 当前生效的模型条目（找不到 activeId 或已停用时，回退到第一个启用的条目） */
+    /** 当前生效的模型条目（找不到 activeId 时，回退到第一个条目） */
     fun activeProvider(): AiProviderConfig? =
-        myState.providers.firstOrNull { it.id == myState.activeProviderId && it.enabled }
-            ?: myState.providers.firstOrNull { it.enabled }
+        myState.providers.firstOrNull { it.id == myState.activeProviderId }
+            ?: myState.providers.firstOrNull()
 
     fun setActiveProvider(id: String) {
         myState.activeProviderId = id

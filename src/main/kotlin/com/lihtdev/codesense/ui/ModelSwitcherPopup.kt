@@ -135,9 +135,9 @@ object ModelSwitcherPopup {
             return
         }
 
-        // 按 providerId 分组构建列表（仅启用条目）
+        // 按 providerId 分组构建模型列表
         val entries = mutableListOf<ListEntry>()
-        val grouped = providers.filter { it.enabled }.groupBy { it.providerId }
+        val grouped = providers.groupBy { it.providerId }
         for ((_, group) in grouped) {
             val first = group.first()
             entries.add(ListEntry.Header(first.displayName))

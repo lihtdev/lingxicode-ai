@@ -17,7 +17,6 @@ enum class ProviderPlanType {
  * - [providerId]：提供商 id，同一提供商的多条记录共享（apiKey 按此存取）
  * - [model]：模型名（API 实际请求用的 model id）
  * - [tags]：标签列表
- * - [enabled]：是否启用（停用的模型不参与调用与切换）
  *
  * 注意：apiKey 不在持久化文件中，经 PasswordSafe 按 providerId 存取（见 [AppSettings]）。
  */
@@ -29,5 +28,4 @@ data class AiProviderConfig(
     var baseUrl: String = "",
     var model: String = "",
     var tags: MutableList<String> = mutableListOf(),
-    var enabled: Boolean = true,
 )
