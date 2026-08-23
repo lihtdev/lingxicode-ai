@@ -7,6 +7,12 @@ enum class ProviderPlanType {
     TOKEN_PLAN,
     CODING_PLAN,
     PAY_AS_YOU_GO,
+    ;
+
+    companion object {
+        /** 界面上类型下拉的展示顺序：按量付费 → Token Plan → Coding Plan */
+        val DISPLAY_ORDER = listOf(PAY_AS_YOU_GO, TOKEN_PLAN, CODING_PLAN)
+    }
 }
 
 /**

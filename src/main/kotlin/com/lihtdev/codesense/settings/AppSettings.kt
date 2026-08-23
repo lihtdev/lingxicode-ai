@@ -14,6 +14,7 @@ import com.intellij.openapi.components.Storage
  */
 data class AppSettingsState(
     var providers: MutableList<AiProviderConfig> = mutableListOf(),
+    var userProviders: MutableList<UserProvider> = mutableListOf(),
     var activeProviderId: String = "",
     var outputLanguage: String = "zh",
     var uiLanguage: String = "zh",
@@ -39,6 +40,8 @@ class AppSettings : PersistentStateComponent<AppSettingsState> {
         myState = state
         // 兼容旧数据：旧格式每条记录一个提供商，providerId 为空时回填为 id
         myState.providers.forEach { if (it.providerId.isBlank()) it.providerId = it.id }
+        // 兼容旧数据：把既有模型条目中的自定义提供商回填为用户档案（保留已保存档案，只补缺失）
+        myState.userProviders = UserProvider.backfillFrom(myState.providers, myState.userProviders).toMutableList()
     }
 
     /** 当前生效的模型条目（找不到 activeId 时，回退到第一个条目） */

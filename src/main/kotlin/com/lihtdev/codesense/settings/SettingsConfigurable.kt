@@ -35,6 +35,7 @@ import java.awt.event.MouseMotionAdapter
 import java.util.UUID
 import javax.swing.DefaultComboBoxModel
 import javax.swing.DefaultListModel
+import javax.swing.Icon
 import javax.swing.JButton
 import javax.swing.JCheckBox
 import javax.swing.JComboBox
@@ -89,6 +90,7 @@ class SettingsConfigurable : Configurable {
 
     /** 工作副本（应用前不落盘） */
     private lateinit var workingProviders: MutableList<AiProviderConfig>
+    private lateinit var workingUserProviders: MutableList<UserProvider>
     private var workingActiveId: String = ""
     private val workingApiKeys = mutableMapOf<String, String?>()
 
@@ -296,6 +298,7 @@ class SettingsConfigurable : Configurable {
         val appliedOutputLanguage = if (outputLanguageCombo.selectedIndex == 1) "en" else "zh"
         val appliedUiLanguage = if (uiLanguageCombo.selectedIndex == 1) "en" else "zh"
         return workingProviders != current.providers
+            || workingUserProviders != current.userProviders
             || workingActiveId != current.activeProviderId
             || appliedOutputLanguage != current.outputLanguage
             || appliedUiLanguage != current.uiLanguage
@@ -306,6 +309,7 @@ class SettingsConfigurable : Configurable {
     override fun apply() {
         val state = settings.state
         state.providers = workingProviders.map { it.copy() }.toMutableList()
+        state.userProviders = workingUserProviders.map { it.copy(plans = it.plans.toMutableList()) }.toMutableList()
         state.activeProviderId = workingActiveId
         state.outputLanguage = if (outputLanguageCombo.selectedIndex == 1) "en" else "zh"
         state.uiLanguage = if (uiLanguageCombo.selectedIndex == 1) "en" else "zh"
@@ -318,6 +322,9 @@ class SettingsConfigurable : Configurable {
     override fun reset() {
         val state = settings.state
         workingProviders = state.providers.map { it.copy() }.toMutableList()
+        workingUserProviders = state.userProviders
+            .map { it.copy(plans = it.plans.toMutableList()) }
+            .toMutableList()
         workingActiveId = state.activeProviderId
         workingApiKeys.clear()
         workingProviders.forEach { workingApiKeys[it.providerId] = AppSettings.getApiKey(it.providerId) }
@@ -342,20 +349,49 @@ class SettingsConfigurable : Configurable {
         col.preferredWidth = width
     }
 
-    /** 弹出添加模型对话框（批量勾选预设/API 获取的模型） */
+    /** 弹出添加模型对话框（先在提供商信息区选择/维护提供商，再批量勾选要添加的模型） */
     private fun showAddProviderDialog() {
-        val dialog = AddProviderDialog(mainPanel, ModelUniqueness.keysOf(workingProviders))
+        val dialog = AddProviderDialog(
+            mainPanel,
+            ModelUniqueness.keysOf(workingProviders),
+            workingProviders,
+            workingUserProviders,
+        )
         if (dialog.showAndGet()) {
-            val configs = dialog.resultConfigs
-            if (configs.isEmpty()) return
-            configs.forEach { config ->
-                workingProviders.add(config)
-                if (dialog.apiKey.isNotBlank()) {
-                    workingApiKeys[config.providerId] = dialog.apiKey
+            // 1) 删除的提供商：级联移除其全部模型条目
+            dialog.resultRemovedProviderIds.forEach { removedId ->
+                workingProviders.removeAll { it.providerId == removedId }
+            }
+            // 2) 编辑的提供商：级联更新其模型条目的显示名与 baseUrl
+            dialog.resultEditedProviders.forEach { (providerId, updated) ->
+                val updatedBaseUrl = updated.plans.firstOrNull()?.baseUrl
+                workingProviders.filter { it.providerId == providerId }.forEach {
+                    it.displayName = updated.displayName
+                    if (updatedBaseUrl != null) {
+                        it.baseUrl = updatedBaseUrl
+                    }
                 }
             }
-            if (workingActiveId.isBlank()) {
-                workingActiveId = configs.first().id
+            // 3) 提供商档案整体替换
+            workingUserProviders = dialog.resultProviders
+                .map { it.copy(plans = it.plans.toMutableList()) }
+                .toMutableList()
+            // 4) 新增模型条目
+            val configs = dialog.resultConfigs
+            if (configs.isNotEmpty()) {
+                configs.forEach { config ->
+                    workingProviders.add(config)
+                    if (dialog.apiKey.isNotBlank()) {
+                        workingApiKeys[config.providerId] = dialog.apiKey
+                    }
+                }
+                if (workingActiveId.isBlank()) {
+                    workingActiveId = configs.first().id
+                }
+            }
+            // 5) 激活条目被级联删除后回退到第一个条目
+            if (workingActiveId.isNotBlank() && workingProviders.none { it.id == workingActiveId }) {
+                workingActiveId = workingProviders.firstOrNull()?.id ?: ""
             }
             refreshTable()
         }
@@ -428,42 +464,46 @@ class SettingsConfigurable : Configurable {
     // ---- 添加模型对话框 ----
 
     /**
-     * 添加模型对话框：批量勾选预设模型或通过 API 获取的模型列表。
+     * 添加模型对话框：先在「提供商信息」区选择/维护提供商，再在「选择模型」区勾选要添加的模型。
      */
     private class AddProviderDialog(
         parent: JComponent,
         private val existingKeys: Set<String>,
+        private val existingProviders: List<AiProviderConfig>,
+        initialUserProviders: List<UserProvider>,
     ) : DialogWrapper(parent, true) {
 
-        private val presetCombo = JComboBox<ProviderPreset>().apply {
-            renderer = PresetRenderer()
-            // 第一项为「自定义」
-            addItem(
-                ProviderPreset(
-                    id = "__custom__",
-                    displayName = "\u2014 \u81EA\u5B9A\u4E49 \u2014",
-                    models = emptyList(),
-                    plans = listOf(PlanPreset(ProviderPlanType.PAY_AS_YOU_GO, "")),
-                ),
-            )
-            ProviderPresets.ALL.forEach { addItem(it) }
-            addActionListener { onPresetSelected() }
+        // ---- 提供商信息区 ----
+        private val providerCombo = JComboBox<ProviderOption>().apply {
+            renderer = ProviderOptionRenderer()
+            minimumSize = Dimension(200, 30)
+            addActionListener { onProviderSelected() }
         }
-
-        private val nameField = JTextField(30).apply {
+        private val providerValueLabel = JBLabel("").apply {
             minimumSize = Dimension(200, preferredSize.height)
         }
         private val planTypeCombo = JComboBox<ProviderPlanType>().apply {
-            minimumSize = Dimension(140, preferredSize.height)
+            renderer = PlanRenderer()
+            minimumSize = Dimension(140, 30)
+            addActionListener { onPlanTypeChanged() }
         }
-        private val baseUrlField = JTextField(30).apply {
-            minimumSize = Dimension(220, preferredSize.height)
+        private val baseUrlValueLabel = JBLabel("").apply {
+            minimumSize = Dimension(200, preferredSize.height)
         }
         private val apiKeyField = JBPasswordField().apply {
             minimumSize = Dimension(200, preferredSize.height)
         }
         private val testButton = JButton(CodeSenseBundle.message("settings.testConnection")).apply {
             addActionListener { testConnection() }
+        }
+        private val addProviderButton = iconButton(AllIcons.General.Add, "settings.addProvider.addProvider") {
+            showProviderEditor(null)
+        }
+        private val editProviderButton = iconButton(AllIcons.Actions.Edit, "settings.addProvider.editProvider") {
+            showProviderEditor(selectedCustomProvider())
+        }
+        private val deleteProviderButton = iconButton(AllIcons.General.Delete, null) {
+            confirmDeleteProvider()
         }
 
         // 模型复选框列表
@@ -489,38 +529,69 @@ class SettingsConfigurable : Configurable {
         /** 程序化加载期间为 true，防止监听器误触发 */
         private var isLoading = false
 
+        /** 对话框内提供商档案工作副本（基于设置页工作副本初始化；取消对话框不生效） */
+        private val workingUserProviders: MutableList<UserProvider> =
+            initialUserProviders.map { it.copy(plans = it.plans.toMutableList()) }.toMutableList()
+
+        /** 本次对话框内被删除的提供商 id（其模型条目由设置页在 OK 后级联移除） */
+        private val removedProviderIds = linkedSetOf<String>()
+
+        /** 本次对话框内被编辑的提供商（providerId → 新档案，其模型条目由设置页在 OK 后级联更新） */
+        private val editedProviders = linkedMapOf<String, UserProvider>()
+
         var resultConfigs: List<AiProviderConfig> = emptyList()
             private set
         var apiKey: String = ""
             private set
+        var resultProviders: List<UserProvider> = emptyList()
+            private set
+        var resultRemovedProviderIds: Set<String> = emptySet()
+            private set
+        var resultEditedProviders: Map<String, UserProvider> = emptyMap()
+            private set
 
         init {
             title = CodeSenseBundle.message("settings.addProvider.title")
-            presetCombo.minimumSize = Dimension(200, 30)
-            planTypeCombo.renderer = PlanRenderer()
-            planTypeCombo.addActionListener { onPlanTypeChanged() }
             setOKButtonText(CodeSenseBundle.message("settings.addProvider.confirm"))
             setCancelButtonText(CodeSenseBundle.message("settings.addProvider.cancel"))
-            onPresetSelected()
+            rebuildProviderCombo()
             init()
         }
 
-        override fun createCenterPanel(): JComponent {
-            val baseUrlWithNote = JPanel(BorderLayout()).apply {
-                add(baseUrlField, BorderLayout.NORTH)
-                add(JBLabel(CodeSenseBundle.message("settings.addProvider.protocolNote")).apply {
-                    font = font.deriveFont(Font.PLAIN, 11f)
-                    foreground = JBColor.GRAY
-                    border = JBUI.Borders.empty(2, 0, 0, 0)
-                }, BorderLayout.SOUTH)
+        /** 小图标按钮：16×16、无边框填充、手型光标、带功能提示（参照弹窗齿轮/表格操作列按钮样式） */
+        private fun iconButton(icon: Icon, tipKey: String?, action: () -> Unit): JButton =
+            JButton(icon).apply {
+                isFocusable = false
+                isContentAreaFilled = false
+                isBorderPainted = false
+                margin = JBUI.insets(0)
+                preferredSize = Dimension(16, 16)
+                minimumSize = Dimension(16, 16)
+                maximumSize = Dimension(16, 16)
+                cursor = java.awt.Cursor.getPredefinedCursor(java.awt.Cursor.HAND_CURSOR)
+                tipKey?.let { toolTipText = CodeSenseBundle.message(it) }
+                addActionListener { action() }
             }
 
+        override fun createCenterPanel(): JComponent {
             val hintLabel = JBLabel(CodeSenseBundle.message("settings.addProvider.hint")).apply {
                 foreground = JBColor.GRAY
                 font = font.deriveFont(Font.PLAIN, 12f)
                 border = JBUI.Borders.empty(0, 0, 8, 0)
             }
 
+            // 提供商操作按钮行：新增 / 编辑 / 删除（删除仅对自定义提供商开放）
+            val providerActions = JPanel(FlowLayout(FlowLayout.LEFT, 4, 0)).apply {
+                add(addProviderButton)
+                add(editProviderButton)
+                add(deleteProviderButton)
+            }
+            val providerRow = JPanel(BorderLayout(4, 0)).apply {
+                add(providerCombo, BorderLayout.CENTER)
+                add(providerActions, BorderLayout.EAST)
+            }
+
+            // 模型列表操作行 + 手动添加行
             val fetchButton = JButton(CodeSenseBundle.message("settings.addProvider.fetchModels")).apply {
                 addActionListener { fetchModels() }
             }
@@ -544,42 +615,52 @@ class SettingsConfigurable : Configurable {
             }
 
             // 表单标签（设置最小宽度，避免窗口缩小时文字被挤压）
-            val templateLabel = JLabel(CodeSenseBundle.message("settings.addProvider.template")).apply {
+            val templateLabel = JLabel(SettingsConfigurable.requiredLabel("settings.addProvider.template")).apply {
                 minimumSize = preferredSize
             }
-            val providerLabel = JLabel(SettingsConfigurable.requiredLabel("settings.provider")).apply {
+            val providerLabel = JLabel(CodeSenseBundle.message("settings.provider")).apply {
                 minimumSize = preferredSize
             }
             val planTypeLabel = JLabel(CodeSenseBundle.message("settings.planType")).apply {
                 minimumSize = preferredSize
             }
-            val baseUrlLabel = JLabel(SettingsConfigurable.requiredLabel("settings.baseUrl")).apply {
+            val baseUrlLabel = JLabel(CodeSenseBundle.message("settings.baseUrl")).apply {
                 minimumSize = preferredSize
             }
             val apiKeyLabel = JLabel(CodeSenseBundle.message("settings.apiKey")).apply {
                 minimumSize = preferredSize
             }
-            val selectModelsLabel = JLabel(SettingsConfigurable.requiredLabel("settings.addProvider.selectModels")).apply {
+
+            // 区块标题：加粗灰色小字，把对话框分成「提供商信息 / 选择模型」两区
+            val providerSectionCaption = JBLabel(CodeSenseBundle.message("settings.addProvider.section.provider")).apply {
                 font = font.deriveFont(Font.BOLD, 12f)
-                minimumSize = preferredSize
+                foreground = JBColor.GRAY
+            }
+            val modelsSectionCaption = JBLabel(CodeSenseBundle.message("settings.addProvider.section.models")).apply {
+                font = font.deriveFont(Font.BOLD, 12f)
+                foreground = JBColor.GRAY
             }
 
+            // 提供商信息（选择/维护提供商 + 只读展示 + API Key）→ 选择模型（勾选/获取/手动添加）
             return FormBuilder.createFormBuilder()
                 .addComponent(hintLabel)
-                .addSeparator()
+                .addVerticalGap(2)
+                .addComponent(providerSectionCaption)
+                .addVerticalGap(4)
+                .addLabeledComponent(templateLabel, providerRow)
                 .addVerticalGap(6)
-                .addLabeledComponent(templateLabel, presetCombo)
-                .addVerticalGap(6)
-                .addLabeledComponent(providerLabel, nameField)
+                .addLabeledComponent(providerLabel, providerValueLabel)
                 .addVerticalGap(6)
                 .addLabeledComponent(planTypeLabel, planTypeCombo)
                 .addVerticalGap(6)
-                .addLabeledComponent(baseUrlLabel, baseUrlWithNote)
+                .addLabeledComponent(baseUrlLabel, baseUrlValueLabel)
                 .addVerticalGap(6)
                 .addLabeledComponent(apiKeyLabel, apiKeyField)
-                .addVerticalGap(6)
+                .addVerticalGap(10)
                 .addSeparator()
-                .addComponent(selectModelsLabel)
+                .addVerticalGap(10)
+                .addComponent(modelsSectionCaption)
+                .addVerticalGap(4)
                 .addComponent(buttonRow)
                 .addComponent(listScroll)
                 .addComponent(manualRow)
@@ -604,39 +685,120 @@ class SettingsConfigurable : Configurable {
             return south
         }
 
-        private fun onPresetSelected() {
-            val preset = presetCombo.selectedItem as? ProviderPreset ?: return
+        /** 选中提供商变化：刷新只读展示、类型可选范围与按钮可用态，并清空模型列表 */
+        private fun onProviderSelected() {
+            if (isLoading) return
+            val option = selectedOption() ?: return
             isLoading = true
             try {
-                if (preset.id == "__custom__") {
-                    nameField.text = ""
-                    val types = arrayOf(ProviderPlanType.PAY_AS_YOU_GO)
-                    planTypeCombo.model = DefaultComboBoxModel(types)
-                    baseUrlField.text = ""
-                    setModelItems(emptyList(), selected = false)
-                } else {
-                    nameField.text = preset.displayName
-                    val planTypes = preset.plans.map { it.type }.distinct().toTypedArray()
-                    planTypeCombo.model = DefaultComboBoxModel(planTypes)
-                    planTypeCombo.selectedItem = planTypes.first()
-                    baseUrlField.text = preset.plans.first().baseUrl
-                    // 不预置模型列表：模型由用户手动添加或点击「获取模型」加载（无需默认模型列表）
-                    setModelItems(emptyList(), selected = false)
-                }
+                providerValueLabel.text = option.displayName
+                // 类型下拉按统一顺序展示：按量付费 → Token Plan → Coding Plan
+                val planTypes = option.plans.map { it.type }.distinct()
+                    .sortedBy { ProviderPlanType.DISPLAY_ORDER.indexOf(it) }
+                val current = planTypeCombo.selectedItem as? ProviderPlanType
+                planTypeCombo.model = DefaultComboBoxModel(planTypes.toTypedArray())
+                planTypeCombo.selectedItem = if (planTypes.contains(current)) current else planTypes.firstOrNull()
+                refreshBaseUrlLabel()
+                editProviderButton.isEnabled = option.isCustom
+                deleteProviderButton.isEnabled = option.isCustom
+                // 删除按钮提示随选中项变化：自定义可删 / 预设仅提示限制
+                deleteProviderButton.toolTipText = CodeSenseBundle.message(
+                    if (option.isCustom) {
+                        "settings.addProvider.deleteProvider"
+                    } else {
+                        "settings.addProvider.deleteProvider.tooltip"
+                    },
+                )
+                setModelItems(emptyList(), selected = false)
             } finally {
                 isLoading = false
             }
         }
 
-        /** 切换类型：自动带出该类型对应的 baseUrl */
+        /** 切换类型：接口地址只读展示跟随（提供商档案内的 plans 决定） */
         private fun onPlanTypeChanged() {
             if (isLoading) return
-            val preset = presetCombo.selectedItem as? ProviderPreset ?: return
-            if (preset.id == "__custom__") return
+            refreshBaseUrlLabel()
+        }
+
+        /** 依据当前选中的类型刷新接口地址只读展示 */
+        private fun refreshBaseUrlLabel() {
+            val option = selectedOption() ?: return
             val planType = planTypeCombo.selectedItem as? ProviderPlanType ?: return
-            preset.plans.firstOrNull { it.type == planType }?.let { plan ->
-                baseUrlField.text = plan.baseUrl
+            baseUrlValueLabel.text = option.baseUrlOf(planType)
+        }
+
+        /** 重建提供商下拉（预设 + 自定义档案），可指定选中项 id */
+        private fun rebuildProviderCombo(selectId: String? = null) {
+            isLoading = true
+            try {
+                providerCombo.removeAllItems()
+                ProviderPresets.ALL.forEach { p ->
+                    providerCombo.addItem(ProviderOption(p.id, p.displayName, p.plans, isCustom = false))
+                }
+                workingUserProviders.forEach { p ->
+                    providerCombo.addItem(ProviderOption(p.id, p.displayName, p.plans, isCustom = true))
+                }
+                val index = selectId?.let { id ->
+                    (0 until providerCombo.itemCount).firstOrNull { providerCombo.getItemAt(it).id == id }
+                }
+                providerCombo.selectedIndex = index ?: 0
+            } finally {
+                isLoading = false
             }
+            onProviderSelected()
+        }
+
+        private fun selectedOption(): ProviderOption? = providerCombo.selectedItem as? ProviderOption
+
+        /** 选中的自定义提供商档案；选中预设时返回 null */
+        private fun selectedCustomProvider(): UserProvider? {
+            val option = selectedOption() ?: return null
+            if (!option.isCustom) return null
+            return workingUserProviders.firstOrNull { it.id == option.id }
+        }
+
+        /** 打开提供商编辑器：existing=null 新建，否则编辑该自定义提供商 */
+        private fun showProviderEditor(existing: UserProvider?) {
+            val takenNames = ProviderPresets.ALL.map { it.displayName } +
+                workingUserProviders.filter { it.id != existing?.id }.map { it.displayName }
+            val dialog = ProviderEditorDialog(contentPanel, existing, takenNames.toSet())
+            if (dialog.showAndGet()) {
+                val result = dialog.resultProvider ?: return
+                if (existing == null) {
+                    workingUserProviders.add(result)
+                } else {
+                    val idx = workingUserProviders.indexOfFirst { it.id == existing.id }
+                    if (idx >= 0) {
+                        workingUserProviders[idx] = result
+                    }
+                    editedProviders[result.id] = result
+                }
+                rebuildProviderCombo(selectId = result.id)
+            }
+        }
+
+        /** 删除选中的自定义提供商：二次确认（含其下模型数量），确认后从档案与下拉移除 */
+        private fun confirmDeleteProvider() {
+            val provider = selectedCustomProvider() ?: return
+            val modelCount = existingProviders.count { it.providerId == provider.id }
+            val result = Messages.showYesNoDialog(
+                null as Project?,
+                CodeSenseBundle.message(
+                    "settings.addProvider.deleteProvider.confirm",
+                    provider.displayName,
+                    modelCount.toString(),
+                ),
+                CodeSenseBundle.message("settings.deleteProvider.confirm.title"),
+                CodeSenseBundle.message("settings.deleteProvider.confirm.ok"),
+                CodeSenseBundle.message("settings.deleteProvider.confirm.cancel"),
+                Messages.getQuestionIcon(),
+            )
+            if (result != Messages.YES) return
+            workingUserProviders.removeAll { it.id == provider.id }
+            editedProviders.remove(provider.id)
+            removedProviderIds.add(provider.id)
+            rebuildProviderCombo()
         }
 
         /** 填充模型复选框列表 */
@@ -665,7 +827,9 @@ class SettingsConfigurable : Configurable {
 
         /** 测试当前配置的连通性（后台发一条最小请求，模型取第一个已勾选项，未勾选时取列表第一项） */
         private fun testConnection() {
-            val baseUrl = baseUrlField.text.trim()
+            val option = selectedOption() ?: return
+            val planType = planTypeCombo.selectedItem as? ProviderPlanType ?: return
+            val baseUrl = option.baseUrlOf(planType)
             if (baseUrl.isEmpty()) {
                 Messages.showWarningDialog(
                     contentPanel,
@@ -695,7 +859,7 @@ class SettingsConfigurable : Configurable {
             val provider = AiProviderConfig(
                 id = "test",
                 providerId = "test",
-                displayName = nameField.text.trim(),
+                displayName = option.displayName,
                 baseUrl = baseUrl,
                 model = model,
             )
@@ -743,7 +907,9 @@ class SettingsConfigurable : Configurable {
 
         /** 通过 API（GET {baseUrl}/models）获取模型列表 */
         private fun fetchModels() {
-            val baseUrl = baseUrlField.text.trim()
+            val option = selectedOption() ?: return
+            val planType = planTypeCombo.selectedItem as? ProviderPlanType ?: return
+            val baseUrl = option.baseUrlOf(planType)
             if (baseUrl.isEmpty()) {
                 Messages.showWarningDialog(
                     contentPanel,
@@ -764,7 +930,7 @@ class SettingsConfigurable : Configurable {
             val provider = AiProviderConfig(
                 id = "fetch",
                 providerId = "fetch",
-                displayName = nameField.text.trim(),
+                displayName = option.displayName,
                 baseUrl = baseUrl,
                 model = "",
             )
@@ -796,16 +962,9 @@ class SettingsConfigurable : Configurable {
         }
 
         override fun doOKAction() {
-            val name = nameField.text.trim()
-            if (name.isEmpty()) {
-                Messages.showWarningDialog(
-                    contentPanel,
-                    CodeSenseBundle.message("settings.addProvider.name.empty"),
-                    CodeSenseBundle.message("settings.addProvider.title"),
-                )
-                return
-            }
-            val baseUrl = baseUrlField.text.trim()
+            val option = selectedOption() ?: return
+            val planType = planTypeCombo.selectedItem as? ProviderPlanType ?: ProviderPlanType.PAY_AS_YOU_GO
+            val baseUrl = option.baseUrlOf(planType)
             if (baseUrl.isEmpty()) {
                 Messages.showWarningDialog(
                     contentPanel,
@@ -817,21 +976,10 @@ class SettingsConfigurable : Configurable {
             val selectedModels = (0 until modelListModel.size())
                 .map { modelListModel.getElementAt(it) }
                 .filter { it.selected }
-            if (selectedModels.isEmpty()) {
-                Messages.showWarningDialog(
-                    contentPanel,
-                    CodeSenseBundle.message("settings.addProvider.noModels"),
-                    CodeSenseBundle.message("settings.addProvider.title"),
-                )
-                return
-            }
-            val preset = presetCombo.selectedItem as? ProviderPreset
-            val providerId = if (preset != null && preset.id != "__custom__") preset.id else "custom-${UUID.randomUUID()}"
-            val planType = planTypeCombo.selectedItem as? ProviderPlanType ?: ProviderPlanType.PAY_AS_YOU_GO
-            // 「供应商 + 类型 + 模型」唯一性校验：已存在的模型提示并跳过，全部重复则不关闭窗口
+            // 允许不选模型直接确定：此时仅提交提供商档案的增/删/改
             val (duplicates, uniques) = ModelUniqueness.partition(
                 existingKeys,
-                name,
+                option.displayName,
                 planType,
                 selectedModels.map { it.name },
             )
@@ -840,7 +988,7 @@ class SettingsConfigurable : Configurable {
                     contentPanel,
                     CodeSenseBundle.message(
                         "settings.addProvider.duplicate",
-                        name,
+                        option.displayName,
                         planTypeLabel(planType),
                         duplicates.joinToString("、") { it.trim() },
                     ),
@@ -848,22 +996,150 @@ class SettingsConfigurable : Configurable {
                 )
             }
             if (uniques.isEmpty()) {
-                return
-            }
-            val seen = mutableSetOf<String>()
-            resultConfigs = uniques.map { m ->
-                var id = "$providerId:$m"
-                if (!seen.add(id)) id = "$providerId:$m:${UUID.randomUUID()}"
-                AiProviderConfig(
-                    id = id,
-                    providerId = providerId,
-                    displayName = name,
-                    planType = planType,
-                    baseUrl = baseUrl,
-                    model = m,
-                )
+                resultConfigs = emptyList()
+            } else {
+                val seen = mutableSetOf<String>()
+                resultConfigs = uniques.map { m ->
+                    var id = "${option.id}:$m"
+                    if (!seen.add(id)) id = "${option.id}:$m:${UUID.randomUUID()}"
+                    AiProviderConfig(
+                        id = id,
+                        providerId = option.id,
+                        displayName = option.displayName,
+                        planType = planType,
+                        baseUrl = baseUrl,
+                        model = m,
+                    )
+                }
             }
             apiKey = String(apiKeyField.password)
+            resultProviders = workingUserProviders.map { it.copy(plans = it.plans.toMutableList()) }
+            resultRemovedProviderIds = removedProviderIds.toSet()
+            resultEditedProviders = editedProviders.toMap()
+            super.doOKAction()
+        }
+    }
+
+    /** 选择提供商下拉条目：预设或用户自定义（统一建模） */
+    private data class ProviderOption(
+        val id: String,
+        val displayName: String,
+        val plans: List<PlanPreset>,
+        val isCustom: Boolean,
+    ) {
+        /** 某类型对应的 baseUrl；未声明时返回空串 */
+        fun baseUrlOf(type: ProviderPlanType): String = plans.firstOrNull { it.type == type }?.baseUrl ?: ""
+    }
+
+    /**
+     * 提供商编辑器：新增/编辑用户自定义提供商（名称 + 类型 + 接口地址）。
+     * 预设提供商不可编辑（不可进入本对话框）。
+     */
+    private class ProviderEditorDialog(
+        parent: JComponent,
+        private val existing: UserProvider?,
+        private val takenNames: Set<String>,
+    ) : DialogWrapper(parent, true) {
+
+        private val dialogTitle = CodeSenseBundle.message(
+            if (existing == null) {
+                "settings.addProvider.providerEditor.create"
+            } else {
+                "settings.addProvider.providerEditor.edit"
+            },
+        )
+
+        private val nameField = JTextField(30).apply {
+            minimumSize = Dimension(200, 30)
+        }
+        private val planTypeCombo = JComboBox<ProviderPlanType>().apply {
+            renderer = PlanRenderer()
+            minimumSize = Dimension(140, 30)
+        }
+        private val baseUrlField = JTextField(30).apply {
+            minimumSize = Dimension(220, 30)
+        }
+
+        var resultProvider: UserProvider? = null
+            private set
+
+        init {
+            title = dialogTitle
+            planTypeCombo.model = DefaultComboBoxModel(ProviderPlanType.DISPLAY_ORDER.toTypedArray())
+            setOKButtonText(CodeSenseBundle.message("settings.addProvider.confirm"))
+            setCancelButtonText(CodeSenseBundle.message("settings.addProvider.cancel"))
+            loadInitial()
+            init()
+        }
+
+        private fun loadInitial() {
+            if (existing != null) {
+                nameField.text = existing.displayName
+                planTypeCombo.selectedItem = existing.plans.firstOrNull()?.type ?: ProviderPlanType.PAY_AS_YOU_GO
+                baseUrlField.text = existing.plans.firstOrNull()?.baseUrl ?: ""
+            }
+        }
+
+        override fun createCenterPanel(): JComponent {
+            val baseUrlWithNote = JPanel(BorderLayout()).apply {
+                add(baseUrlField, BorderLayout.NORTH)
+                add(JBLabel(CodeSenseBundle.message("settings.addProvider.protocolNote")).apply {
+                    font = font.deriveFont(Font.PLAIN, 11f)
+                    foreground = JBColor.GRAY
+                    border = JBUI.Borders.empty(2, 0, 0, 0)
+                }, BorderLayout.SOUTH)
+            }
+            val providerLabel = JLabel(SettingsConfigurable.requiredLabel("settings.provider")).apply {
+                minimumSize = preferredSize
+            }
+            val planTypeLabel = JLabel(CodeSenseBundle.message("settings.planType")).apply {
+                minimumSize = preferredSize
+            }
+            val baseUrlLabel = JLabel(SettingsConfigurable.requiredLabel("settings.baseUrl")).apply {
+                minimumSize = preferredSize
+            }
+            return FormBuilder.createFormBuilder()
+                .addLabeledComponent(providerLabel, nameField)
+                .addVerticalGap(6)
+                .addLabeledComponent(planTypeLabel, planTypeCombo)
+                .addVerticalGap(6)
+                .addLabeledComponent(baseUrlLabel, baseUrlWithNote)
+                .panel
+        }
+
+        override fun doOKAction() {
+            val name = nameField.text.trim()
+            if (name.isEmpty()) {
+                Messages.showWarningDialog(
+                    contentPanel,
+                    CodeSenseBundle.message("settings.addProvider.name.empty"),
+                    dialogTitle,
+                )
+                return
+            }
+            val baseUrl = baseUrlField.text.trim()
+            if (baseUrl.isEmpty()) {
+                Messages.showWarningDialog(
+                    contentPanel,
+                    CodeSenseBundle.message("settings.baseUrl.empty"),
+                    dialogTitle,
+                )
+                return
+            }
+            val planType = planTypeCombo.selectedItem as? ProviderPlanType ?: ProviderPlanType.PAY_AS_YOU_GO
+            if (name in takenNames) {
+                Messages.showWarningDialog(
+                    contentPanel,
+                    CodeSenseBundle.message("settings.addProvider.providerName.duplicate"),
+                    dialogTitle,
+                )
+                return
+            }
+            resultProvider = UserProvider(
+                id = existing?.id ?: "custom-${UUID.randomUUID()}",
+                displayName = name,
+                plans = mutableListOf(PlanPreset(planType, baseUrl)),
+            )
             super.doOKAction()
         }
     }
@@ -1644,14 +1920,19 @@ class SettingsConfigurable : Configurable {
         }
     }
 
-    /** 预设提供商渲染器 */
-    private class PresetRenderer : ListCellRenderer<Any?> {
+    /** 选择提供商下拉渲染器（自定义提供商带「（自定义）」标记） */
+    private class ProviderOptionRenderer : ListCellRenderer<Any?> {
         private val delegate = JLabel()
         override fun getListCellRendererComponent(
             list: javax.swing.JList<out Any?>, value: Any?, index: Int,
             isSelected: Boolean, cellHasFocus: Boolean,
         ): Component {
-            delegate.text = (value as? ProviderPreset)?.displayName ?: value.toString()
+            val option = value as? ProviderOption
+            delegate.text = when {
+                option == null -> value.toString()
+                option.isCustom -> "${option.displayName}（自定义）"
+                else -> option.displayName
+            }
             if (isSelected) {
                 delegate.background = list.selectionBackground
                 delegate.foreground = list.selectionForeground
