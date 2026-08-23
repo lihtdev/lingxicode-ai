@@ -23,5 +23,14 @@ enum class ExplainSymbolKind(val bundleKey: String) {
     BLOCK("explain.symbol.block"),
 
     /** 无法判别的符号 */
-    UNKNOWN("explain.symbol.unknown"),
+    UNKNOWN("explain.symbol.unknown");
+
+    /**
+     * 是否为「声明级、值得一键解释」的符号。
+     *
+     * gutter「解释」图标仅在这些符号名称上展示，变量/字段/参数/代码块等一律不挂，
+     * 避免编辑器行号旁图标过密。
+     */
+    val isExplainableDeclaration: Boolean
+        get() = this == CLASS || this == INTERFACE || this == METHOD || this == FUNCTION
 }

@@ -51,22 +51,26 @@ object CodeContextBuilder {
         if (element != null) {
             val owner = PsiTreeUtil.getParentOfType(element, PsiNameIdentifierOwner::class.java)
             if (owner != null) {
-                val text = editor.document.getText(owner.textRange)
-                if (text.isNotBlank()) {
-                    return ExplainCodeContext(
-                        project = project,
-                        language = language,
-                        fileName = fileName,
-                        symbolKind = SymbolKindDetector.detect(text),
-                        symbolName = owner.name?.takeIf { it.isNotBlank() },
-                        code = truncate(text),
-                    )
-                }
+                fromElement(project, owner)?.let { return it }
             }
         }
 
         // 3) 兜底：光标所在外层同缩进代码块
         return blockFallback(editor, project, language, fileName)
+    }
+
+    /** 从命名符号声明元素构建上下文（gutter 图标等非编辑器入口复用；须在 EDT/读动作内调用） */
+    fun fromElement(project: Project, owner: PsiNameIdentifierOwner): ExplainCodeContext? {
+        val text = owner.text
+        if (text.isBlank()) return null
+        return ExplainCodeContext(
+            project = project,
+            language = owner.language.displayName,
+            fileName = owner.containingFile?.name ?: "",
+            symbolKind = SymbolKindDetector.detect(text),
+            symbolName = owner.name?.takeIf { it.isNotBlank() },
+            code = truncate(text),
+        )
     }
 
     /** 从光标行向上/下扩展到最小同缩进代码块 */

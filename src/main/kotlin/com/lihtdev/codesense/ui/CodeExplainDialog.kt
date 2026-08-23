@@ -5,6 +5,7 @@ import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.DialogWrapper
 import com.intellij.ui.JBColor
 import com.intellij.ui.components.JBScrollPane
+import com.intellij.util.ui.JBFont
 import com.intellij.util.ui.JBUI
 import com.intellij.util.ui.UIUtil
 import com.lihtdev.codesense.i18n.CodeSenseBundle
@@ -34,6 +35,8 @@ class CodeExplainDialog(
 
     init {
         title = dialogTitle
+        // 长解释文本支持拖拽放大窗口阅读
+        isResizable = true
         init()
         setOKButtonText(CodeSenseBundle.message("explain.dialog.close"))
     }
@@ -53,6 +56,8 @@ class CodeExplainDialog(
         val scrollPane = JBScrollPane(editorPane)
         scrollPane.border = null
         scrollPane.preferredSize = JBUI.size(760, 520)
+        // 加大长内容滚动步长（默认步长发涩）
+        scrollPane.verticalScrollBar.unitIncrement = JBUI.scale(16)
 
         return JPanel(BorderLayout()).apply {
             isOpaque = false
@@ -73,21 +78,34 @@ class CodeExplainDialog(
     /** 仅保留「关闭」按钮（复制操作置于左侧） */
     override fun createActions(): Array<Action> = arrayOf(okAction)
 
+    /**
+     * 组装带样式的 HTML。字号从 JBFont 派生，随 IDE 字体缩放联动。
+     * 注意：JEditorPane 的 HTMLEditorKit 仅支持有限 CSS 子集
+     * （font 系列、color、background-color、margin、padding），不支持
+     * border-radius、line-height 与后代选择器，故 code 样式全局生效
+     * （与 pre 内代码底色一致、视觉无缝）。
+     */
     private fun buildHtml(body: String, fg: Color, codeBg: Color): String {
         val fgHex = hex(fg)
         val bgHex = hex(codeBg)
+        // 长文本阅读场景：正文在标签字号上加大一档，标题层级差拉大，行距放松降低阅读负担
+        val base = JBFont.label().size
+        val bodySize = base + 1
+        val h2Size = base + 4
+        val h3Size = base + 2
+        val codeSize = base
         return """
             <html>
             <head>
             <style>
-              body { font-family: sans-serif; font-size: 14px; color: $fgHex; }
-              h2 { font-size: 17px; margin: 18px 0 8px; }
-              h3 { font-size: 15px; margin: 14px 0 6px; }
-              p { margin: 6px 0; }
-              ul { margin: 6px 0; padding-left: 22px; }
-              li { margin: 3px 0; }
-              code { font-family: monospace; font-size: 13px; color: $fgHex; }
-              pre { background: $bgHex; padding: 10px; font-size: 13px; overflow: auto; }
+              body { font-family: sans-serif; font-size: ${bodySize}px; color: $fgHex; padding: 2px 16px 12px; }
+              h2 { font-size: ${h2Size}px; font-weight: bold; margin: 16px 0 6px; }
+              h3 { font-size: ${h3Size}px; font-weight: bold; margin: 12px 0 4px; }
+              p { margin: 8px 0; }
+              ul { margin: 8px 0; padding-left: 24px; }
+              li { margin: 4px 0; }
+              code { font-family: 'JetBrains Mono', Consolas, 'Courier New', monospace; font-size: ${codeSize}px; color: $fgHex; background-color: $bgHex; padding: 1px 3px; }
+              pre { background-color: $bgHex; padding: 10px; margin: 10px 0; }
               strong { font-weight: bold; }
             </style>
             </head>

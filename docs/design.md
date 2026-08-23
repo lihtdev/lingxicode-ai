@@ -26,7 +26,9 @@ CodeSense AI 是面向 JetBrains IDE 的 AI 能力集插件。v1 交付「AI 提
 UI/Action 层
   ├── GenerateCommitMessageAction（提交框按钮）
   ├── ExplainCodeAction（编辑器右键「解释代码」+ 默认快捷键）
-  └── CodeSenseActionGroup（编辑器右键「CodeSense AI」组）
+  ├── ExplainCodeLineMarkerProvider（编辑器行号旁 gutter 图标）
+  ├── ExplainCodeStarter（右键/gutter 统一触发入口）
+  └── CodeSenseActionGroup（编辑器右键「CodeSense AI」组，锚定第一段）
       ▼
 功能层（AiFeature 抽象）
   ├── CommitMessageFeature（提交信息生成）
@@ -67,8 +69,10 @@ interface AiFeature {
 | `PromptBuilder` | 系统提示词（Conventional Commits 规则/语言/单行输出约束）+ 用户消息（文件清单 + diff） |
 | `OpenAiCompatClient` | OpenAI 兼容 HTTP 客户端；10s 连接/60s 请求超时；401/403/404/429 中文错误映射 |
 | `ResponseCleaner` | 清洗输出：去围栏/引号，取首行非空；Conventional 格式校验；`cleanMarkdown` 保留 Markdown 结构（仅去整篇包裹围栏） |
-| `ExplainCodeAction` | 编辑器右键入口：`CodeContextBuilder` 采集目标 → `ExplainCodeFeature` 启动管线；无目标时警告 |
-| `CodeContextBuilder` | 采集待解释代码（EDT）：选区 → 光标最近 `PsiNameIdentifierOwner` → 同缩进块兜底；超 20000 字符截断 |
+| `ExplainCodeAction` | 编辑器右键入口：`CodeContextBuilder.build` 采集目标 → `ExplainCodeStarter.trigger` |
+| `ExplainCodeStarter` | 共享触发入口（右键/gutter 共用）：空目标警告 → `AiInvocationService.invoke` |
+| `ExplainCodeLineMarkerProvider` | 编辑器行号旁 gutter 图标：仅在类/接口/方法/函数等声明级符号名称标识符上挂「解释」图标（灰暗配色，过滤变量/字段/参数），单击解释该符号 |
+| `CodeContextBuilder` | 采集待解释代码（EDT）：选区 → 光标最近 `PsiNameIdentifierOwner` → 同缩进块兜底；`fromElement` 从声明元素采集；超 20000 字符截断 |
 | `SymbolKindDetector` | 纯函数符号判别（类/接口/方法/函数/代码块），语言无关关键字启发式 |
 | `PromptBuilder.buildExplainCode` | 结构化解释提示词：五段固定标题 + 语言/文件/符号类型/代码，输出语言跟随设置 |
 | `MarkdownToHtml` | 受限 Markdown 子集 → HTML（标题/加粗/行内代码/代码围栏/列表/段落 + 转义），零第三方依赖 |
@@ -87,10 +91,17 @@ interface AiFeature {
 
 ### 「代码解释」数据流
 
-1. EDT：右键/快捷键 → `ExplainCodeAction` → `CodeContextBuilder.build`（选区文本或光标最近命名符号，纯字符串）→ 无目标则警告通知；
+1. EDT：右键/快捷键 → `ExplainCodeAction`；或点击 gutter 图标 → `ExplainCodeLineMarkerProvider` 导航处理器。二者分别经 `CodeContextBuilder.build` / `CodeContextBuilder.fromElement` 采集上下文（纯字符串），再并入 `ExplainCodeStarter.trigger`；无目标则警告通知；
 2. 后台（Task.Backgroundable，进度「正在解释代码…」）：`ExplainCodeFeature.buildPrompt`（ReadAction 内）→ `client.chat(..., 2048)`（可取消，经 `feature.maxOutputTokens` 透传）→ `cleanMarkdown`（保留 Markdown 结构）；
 3. `invokeLater` 回 EDT：`MarkdownToHtml.convert` → `CodeExplainDialog.show()`（非模态，可复制/关闭）；
 4. 失败经 `onThrowable` → 复用既有错误通知。
+
+### 「解释代码」入口清单
+
+- 编辑器右键 → `CodeSense AI` 子菜单（锚定 `EditorPopupMenu` 第一段）→「解释代码」；
+- 默认快捷键 `Ctrl+Alt+Shift+E`（可在 Keymap 重绑）；
+- 编辑器行号旁 gutter 图标（仅类/接口/方法/函数名称标识符上，灰暗配色），单击解释该符号；
+- Find Action（`Ctrl+Shift+A`）搜索「解释代码」（动作注册即自动可搜索，零成本兜底）。
 
 ## 5. 错误处理
 
@@ -106,8 +117,8 @@ interface AiFeature {
 
 - 纯逻辑单测（JUnit 5）：SimpleLineDiff / DiffFormatter / PromptBuilder（含 `buildExplainCode`）/ ResponseCleaner（含 `cleanMarkdown`）/ ChatModels（DTO 序列化，含 `maxTokens` 透传）/ SymbolKindDetector / MarkdownToHtml；
 - AI 客户端测试：JDK 内置 HttpServer 模拟端点，验证请求结构/鉴权头/响应解析/错误映射/配置缺失提示、四参 `chat` 的 `max_tokens` 透传与三参缺省 256；
-- 平台集成：runIde 沙箱端到端（按钮渲染、选区/符号两种触发、对话框渲染与复制、真实调用、错误提示）；
-- 兼容性：verifyPlugin（2024.2+）。
+- 平台集成：runIde 沙箱端到端（按钮渲染、右键/快捷键/gutter 图标三种触发、对话框渲染与复制、真实调用、错误提示、gutter 图标与右键行为一致、子菜单置顶）；
+- 兼容性：verifyPlugin（2024.2+，含 `LineMarkerProvider` 平台依赖边界）。
 
 ## 7. 待验证点（实施期确认）
 

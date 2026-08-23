@@ -20,7 +20,9 @@ import com.intellij.ui.components.JBPasswordField
 import com.intellij.ui.table.JBTable
 import com.intellij.util.IconUtil
 import com.intellij.util.ui.FormBuilder
+import com.intellij.util.ui.JBFont
 import com.intellij.util.ui.JBUI
+import com.intellij.util.ui.UIUtil
 import com.lihtdev.codesense.ai.ChatMessage
 import com.lihtdev.codesense.ai.OpenAiCompatClient
 import com.lihtdev.codesense.i18n.CodeSenseBundle
@@ -206,10 +208,11 @@ class SettingsConfigurable : Configurable {
 
         // 第一行：英文名 + 中文名 + 版本号（同一行，字号一致）
         val englishLabel = JLabel(CodeSenseBundle.message("settings.header.englishName")).apply {
-            font = font.deriveFont(Font.BOLD, 20f)
+            font = JBFont.h2()
         }
         val chineseLabel = JLabel(CodeSenseBundle.message("settings.header.chineseName")).apply {
-            font = font.deriveFont(Font.PLAIN, 20f)
+            // 取 JBFont 标题字号（随 IDE 缩放），显式去粗与英文名形成粗细对比
+            font = JBFont.h2().deriveFont(Font.PLAIN)
         }
         val version = try {
             PluginManagerCore.getPlugin(PluginId.getId("com.lihtdev.codesense"))?.version ?: "0.1.0"
@@ -217,13 +220,13 @@ class SettingsConfigurable : Configurable {
             "0.1.0"
         }
         val versionLabel = JLabel(" v$version ").apply {
-            font = font.deriveFont(Font.PLAIN, 12f)
-            foreground = JBColor.GRAY
+            font = JBFont.small()
+            foreground = UIUtil.getContextHelpForeground()
             border = object : javax.swing.border.AbstractBorder() {
                 override fun paintBorder(c: Component?, g: java.awt.Graphics?, x: Int, y: Int, width: Int, height: Int) {
                     val g2 = g as java.awt.Graphics2D
                     g2.setRenderingHint(java.awt.RenderingHints.KEY_ANTIALIASING, java.awt.RenderingHints.VALUE_ANTIALIAS_ON)
-                    g2.color = JBColor.GRAY
+                    g2.color = JBColor.border()
                     g2.drawRoundRect(x, y, width - 1, height - 1, 8, 8)
                 }
                 override fun getBorderInsets(c: Component?) = java.awt.Insets(2, 5, 2, 5)
@@ -244,19 +247,19 @@ class SettingsConfigurable : Configurable {
             border = JBUI.Borders.emptyRight(3)
         }
         val authorLabel = JLabel(CodeSenseBundle.message("settings.header.author")).apply {
-            font = font.deriveFont(Font.PLAIN, 12f)
-            foreground = JBColor.GRAY
+            font = JBFont.small()
+            foreground = UIUtil.getContextHelpForeground()
         }
         val separator = JLabel(" | ").apply {
-            font = font.deriveFont(Font.PLAIN, 12f)
-            foreground = JBColor.GRAY
+            font = JBFont.small()
+            foreground = UIUtil.getContextHelpForeground()
             border = JBUI.Borders.empty(0, 6, 0, 6)
         }
         val githubIcon = JLabel(IconLoader.getIcon("/icons/github.svg", SettingsConfigurable::class.java)).apply {
             border = JBUI.Borders.emptyRight(3)
         }
         val githubLink = JLabel("<html><a href=\"\">https://github.com/lihtdev</a></html>").apply {
-            font = font.deriveFont(Font.PLAIN, 12f)
+            font = JBFont.small()
             cursor = java.awt.Cursor.getPredefinedCursor(java.awt.Cursor.HAND_CURSOR)
             addMouseListener(object : MouseAdapter() {
                 override fun mouseClicked(e: MouseEvent) {
@@ -289,13 +292,15 @@ class SettingsConfigurable : Configurable {
     /** 模型表格区：标题 + 添加按钮 + 表格 */
     private fun createTablePanel(): JPanel {
         val titleLabel = JLabel(CodeSenseBundle.message("settings.providerList.title")).apply {
-            font = Font(font.name, Font.BOLD, font.size)
+            font = JBFont.label().asBold()
         }
         val addButton = JButton(CodeSenseBundle.message("settings.addProvider")).apply {
             addActionListener { showAddProviderDialog() }
         }
 
         val topPanel = JPanel(BorderLayout()).apply {
+            // 标题行与表格之间拉开间距
+            border = JBUI.Borders.emptyBottom(8)
             add(titleLabel, BorderLayout.WEST)
             add(addButton, BorderLayout.EAST)
         }
@@ -536,7 +541,9 @@ class SettingsConfigurable : Configurable {
         // 类型并入提供商选择（不再提供「类型」下拉），类型值以只读行展示
         private val providerCombo = JComboBox<ProviderComboOption>().apply {
             renderer = ProviderOptionRenderer()
+            preferredSize = Dimension(240, 30)
             minimumSize = Dimension(240, 30)
+            maximumSize = Dimension(240, 30)
             addActionListener { onProviderSelected() }
         }
         // 数据行行高固定（首选/最小/最大三向统一，随 UI 缩放）：
@@ -660,8 +667,8 @@ class SettingsConfigurable : Configurable {
 
         override fun createCenterPanel(): JComponent {
             val hintLabel = JBLabel(CodeSenseBundle.message("settings.addProvider.hint")).apply {
-                foreground = JBColor.GRAY
-                font = font.deriveFont(Font.PLAIN, 12f)
+                foreground = UIUtil.getContextHelpForeground()
+                font = JBFont.small()
                 border = JBUI.Borders.empty(0, 0, 4, 0)
             }
 
@@ -727,12 +734,12 @@ class SettingsConfigurable : Configurable {
 
             // 区块标题：加粗灰色小字，把对话框分成「提供商信息 / 选择模型」两区
             val providerSectionCaption = JBLabel(CodeSenseBundle.message("settings.addProvider.section.provider")).apply {
-                font = font.deriveFont(Font.BOLD, 12f)
-                foreground = JBColor.GRAY
+                font = JBFont.label().asBold()
+                foreground = UIUtil.getContextHelpForeground()
             }
             val modelsSectionCaption = JBLabel(CodeSenseBundle.message("settings.addProvider.section.models")).apply {
-                font = font.deriveFont(Font.BOLD, 12f)
-                foreground = JBColor.GRAY
+                font = JBFont.label().asBold()
+                foreground = UIUtil.getContextHelpForeground()
             }
 
             // 提供商信息（选择/维护提供商 + 只读展示 + API Key）→ 选择模型（勾选/获取/手动添加）。
@@ -1186,8 +1193,8 @@ class SettingsConfigurable : Configurable {
             val baseUrlWithNote = JPanel(BorderLayout()).apply {
                 add(baseUrlField, BorderLayout.NORTH)
                 add(JBLabel(CodeSenseBundle.message("settings.addProvider.protocolNote")).apply {
-                    font = font.deriveFont(Font.PLAIN, 11f)
-                    foreground = JBColor.GRAY
+                    font = JBFont.small()
+                    foreground = UIUtil.getContextHelpForeground()
                     border = JBUI.Borders.empty(2, 0, 0, 0)
                 }, BorderLayout.SOUTH)
             }
@@ -1339,7 +1346,7 @@ class SettingsConfigurable : Configurable {
                 border = ChipBorder()
             }
             val label = JBLabel(text).apply {
-                font = font.deriveFont(Font.PLAIN, 11f)
+                font = JBFont.small()
             }
             val removeButton = JButton(AllIcons.Actions.Close).apply {
                 isFocusable = false
@@ -1451,8 +1458,8 @@ class SettingsConfigurable : Configurable {
 
             // 标签提示（最多 N 个）
             val tagsHintLabel = JBLabel(CodeSenseBundle.message("settings.editProvider.tags.max", ModelTagsPanel.MAX_TAGS.toString())).apply {
-                font = font.deriveFont(Font.PLAIN, 10f)
-                foreground = JBColor.GRAY
+                font = JBFont.small()
+                foreground = UIUtil.getContextHelpForeground()
                 border = JBUI.Borders.empty(2, 0, 0, 0)
             }
 
@@ -1483,12 +1490,12 @@ class SettingsConfigurable : Configurable {
 
             // 区块标题：加粗灰色小字，视觉上把「提供商信息」与「模型信息」分成两区
             val providerSectionCaption = JBLabel(CodeSenseBundle.message("settings.editProvider.section.provider")).apply {
-                font = font.deriveFont(Font.BOLD, 12f)
-                foreground = JBColor.GRAY
+                font = JBFont.label().asBold()
+                foreground = UIUtil.getContextHelpForeground()
             }
             val modelSectionCaption = JBLabel(CodeSenseBundle.message("settings.editProvider.section.model")).apply {
-                font = font.deriveFont(Font.BOLD, 12f)
-                foreground = JBColor.GRAY
+                font = JBFont.label().asBold()
+                foreground = UIUtil.getContextHelpForeground()
             }
 
             // 表单分两区：提供商信息（提供商/类型/接口地址只读、API Key 可编辑）→ 模型信息（模型/标签）
@@ -1886,10 +1893,8 @@ class SettingsConfigurable : Configurable {
             hover = mt?.hoverRow == row
             cellBackground = if (hover) table.selectionBackground else table.background
             cellForeground = table.foreground
-            // 与编辑弹窗 chip 字号保持一致。
-            // 渲染器组件不在组件层级树中，getFont() 首帧可能为 null，需安全回退到表格字体。
-            val baseFont = font ?: table.font ?: java.awt.Font(java.awt.Font.SANS_SERIF, java.awt.Font.PLAIN, 12)
-            font = baseFont.deriveFont(11f)
+            // 与编辑弹窗 chip 字号保持一致（JBFont.small()，随 IDE 字体缩放；静态工厂不依赖组件树）
+            font = JBFont.small()
             // 截断时 tooltip 展示完整标签
             val cellWidth = table.getCellRect(row, column, false).width
             toolTipText = if (modelTags.isNotEmpty() && wouldTruncate(cellWidth)) {
@@ -2132,14 +2137,14 @@ class SettingsConfigurable : Configurable {
         private const val ACTION_ICON_W = 26
 
         // 列宽：数据列按「最小宽 + 理想宽（比例权重）」配置，实际宽度由 ModelTable 按窗口宽度分配
-        private const val COL_MODEL_W = 175           // 模型列理想宽（较原 190 略微收窄）
-        private const val COL_MODEL_MIN = 135
-        private const val COL_TYPE_W = 100            // 类型列理想宽
-        private const val COL_TYPE_MIN = 80
-        private const val COL_TAGS_W = 220            // 标签列理想宽（承载 chip 标签；较原 240 略微收窄）
-        private const val COL_TAGS_MIN = 145
-        private const val COL_PROVIDER_W = 130        // 供应商列理想宽
-        private const val COL_PROVIDER_MIN = 100
+        private const val COL_MODEL_W = 200           // 模型列理想宽（突出模型名，略加宽）
+        private const val COL_MODEL_MIN = 150
+        private const val COL_TYPE_W = 92             // 类型列理想宽（略收窄）
+        private const val COL_TYPE_MIN = 75
+        private const val COL_TAGS_W = 200            // 标签列理想宽（承载 chip 标签；略收窄）
+        private const val COL_TAGS_MIN = 135
+        private const val COL_PROVIDER_W = 118        // 供应商列理想宽（略收窄）
+        private const val COL_PROVIDER_MIN = 95
         private const val COL_ACTION_W = 68           // 操作列固定宽（min=max）
 
         // 表格尺寸：高度固定，宽度随设置窗口伸缩（最小 ≈ 各列最小宽之和 + 余量）

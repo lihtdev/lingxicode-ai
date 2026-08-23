@@ -5,34 +5,18 @@ import com.intellij.openapi.actionSystem.AnAction
 import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.actionSystem.CommonDataKeys
 import com.lihtdev.codesense.code.CodeContextBuilder
-import com.lihtdev.codesense.feature.ExplainCodeFeature
-import com.lihtdev.codesense.i18n.CodeSenseBundle
-import com.lihtdev.codesense.service.AiInvocationService
 
 /**
  * 编辑器右键「解释代码」入口。
  *
  * 优先解释选中的代码块，否则解释光标所在的类 / 方法 / 函数；
- * 采集失败（无有效目标）时给出警告通知，不发起请求。
+ * 采集失败（无有效目标）时由 [ExplainCodeStarter] 给出警告通知，不发起请求。
  */
 class ExplainCodeAction : AnAction() {
 
-    private val invocationService = AiInvocationService()
-
     override fun actionPerformed(e: AnActionEvent) {
-        val context = CodeContextBuilder.build(e)
-        if (context == null) {
-            e.project?.let {
-                AiInvocationService.notifyWarning(it, CodeSenseBundle.message("notification.noExplainTarget"))
-            }
-            return
-        }
-        invocationService.invoke(
-            context.project,
-            ExplainCodeFeature(),
-            context,
-            CodeSenseBundle.message("task.explainCode"),
-        )
+        val project = e.project ?: return
+        ExplainCodeStarter.trigger(project, CodeContextBuilder.build(e))
     }
 
     override fun update(e: AnActionEvent) {

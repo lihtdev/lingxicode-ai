@@ -28,6 +28,9 @@
                                  icon="/icons/codesense.svg"/>
         <!-- 通知组 -->
         <notificationGroup id="CodeSenseAI" displayType="BALLOON"/>
+        <!-- 编辑器行号旁 gutter「解释代码」图标 -->
+        <codeInsight.lineMarkerProvider
+                implementationClass="com.lihtdev.codesense.action.ExplainCodeLineMarkerProvider"/>
         <!-- 状态栏模型切换器 -->
         <statusBarWidgetFactory id="codesense.modelSwitcher"
                                 implementation="com.lihtdev.codesense.ui.ModelSwitcherWidgetFactory"
@@ -58,7 +61,7 @@
                description="CodeSense AI features"
                popup="true"
                icon="/icons/codesense.svg">
-            <add-to-group group-id="EditorPopupMenu" anchor="last"/>
+            <add-to-group group-id="EditorPopupMenu" anchor="first"/>
 
             <!-- 解释代码：选中代码块 / 光标所在类、方法、函数 -->
             <action id="CodeSense.ExplainCode"
