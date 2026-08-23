@@ -540,16 +540,17 @@ class SettingsConfigurable : Configurable {
             addActionListener { onProviderSelected() }
         }
         private val providerValueLabel = JBLabel("").apply {
-            minimumSize = Dimension(200, preferredSize.height)
+            minimumSize = Dimension(350, preferredSize.height)
         }
         private val planTypeValueLabel = JBLabel("").apply {
-            minimumSize = Dimension(200, preferredSize.height)
+            minimumSize = Dimension(350, preferredSize.height)
         }
         private val baseUrlValueLabel = JBLabel("").apply {
-            minimumSize = Dimension(200, preferredSize.height)
+            minimumSize = Dimension(400, preferredSize.height)
         }
         private val apiKeyField = JBPasswordField().apply {
-            minimumSize = Dimension(200, preferredSize.height)
+            minimumSize = Dimension(400, preferredSize.height)
+            maximumSize = Dimension(400, Int.MAX_VALUE)
         }
         private val testButton = JButton(CodeSenseBundle.message("settings.testConnection")).apply {
             addActionListener { testConnection() }
@@ -795,6 +796,8 @@ class SettingsConfigurable : Configurable {
             // 每条记录一个类型：类型与接口地址只读展示直接取选项
             planTypeValueLabel.text = providerPlanTypeLabel(option.type)
             baseUrlValueLabel.text = option.baseUrl
+            // 文本可能被裁切：悬停展示完整接口地址
+            baseUrlValueLabel.toolTipText = option.baseUrl
             editProviderButton.isEnabled = option.isCustom
             deleteProviderButton.isEnabled = option.isCustom
             deleteProviderButton.toolTipText = CodeSenseBundle.message(
@@ -1421,6 +1424,10 @@ class SettingsConfigurable : Configurable {
             }
             val baseUrlValueLabel = JBLabel(initialConfig.baseUrl).apply {
                 minimumSize = Dimension(200, preferredSize.height)
+                // 限制最大宽度：文本溢出后超出的部分隐藏（右侧被裁切）
+                maximumSize = Dimension(200, Int.MAX_VALUE)
+                // 文本可能被裁切：悬停展示完整接口地址
+                toolTipText = initialConfig.baseUrl
             }
 
             // 模型下拉 + 「获取模型」按钮
