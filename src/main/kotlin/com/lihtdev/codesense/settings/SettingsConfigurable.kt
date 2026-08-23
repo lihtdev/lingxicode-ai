@@ -392,12 +392,31 @@ class SettingsConfigurable : Configurable {
 
     /** 弹出添加模型对话框（先在提供商信息区选择/维护提供商，再批量勾选要添加的模型） */
     private fun showAddProviderDialog() {
+        // 补全 initialKeys：覆盖所有 combo 选项的 providerId（含表格中无条目的预设/自定义），
+        // 确保任一可选提供商都有 Key 预填
+        val initialKeys = workingApiKeys.toMutableMap()
+        ProviderPresets.ALL.forEach { p ->
+            p.plans.forEach { plan ->
+                val pid = ProviderIds.of(p.id, plan.type)
+                if (pid !in initialKeys) {
+                    initialKeys[pid] = AppSettings.getApiKey(pid)
+                }
+            }
+        }
+        workingUserProviders.forEach { p ->
+            p.plans.forEach { plan ->
+                val pid = ProviderIds.of(p.id, plan.type)
+                if (pid !in initialKeys) {
+                    initialKeys[pid] = AppSettings.getApiKey(pid)
+                }
+            }
+        }
         val dialog = AddProviderDialog(
             mainPanel,
             ModelUniqueness.keysOf(workingProviders),
             workingProviders,
             workingUserProviders,
-            workingApiKeys,
+            initialKeys,
         )
         if (dialog.showAndGet()) {
             // 1) 删除的提供商：级联移除其全部模型条目（条目 providerId 带类型后缀，按 base 归一匹配）
@@ -749,13 +768,7 @@ class SettingsConfigurable : Configurable {
         /** 选中提供商变化：刷新只读展示、按钮可用态、API Key 预填，并清空模型列表 */
         private fun onProviderSelected() {
             if (isLoading) return
-            val option = selectedOption()
-            if (option == null) {
-                // 在 IntelliJ LAF 的特定事件时序下，selectedItem 可能在事件触发时尚未更新；
-                // 保留上一提供商内容，避免信息区空白
-                LOG.warn("selectedOption 为 null，保持上一提供商信息")
-                return
-            }
+            val option = selectedOption() ?: return
             val prevId = selectedProviderId
             val providerChanged = prevId != null && prevId != option.providerId
             try {
@@ -766,18 +779,17 @@ class SettingsConfigurable : Configurable {
                 selectedProviderId = option.providerId
                 refreshProviderInfo(option, providerChanged)
             } catch (e: Exception) {
-                // 任何单选项异常都不能吞掉整块刷新：记录堆栈并复位（信息区保持可继续交互）
                 LOG.warn("刷新提供商信息失败", e)
             }
         }
 
         private fun refreshProviderInfo(option: ProviderComboOption, providerChanged: Boolean) {
             providerValueLabel.text = option.displayName
-            // 仅真正切换提供商时预填 Key：已编辑值优先，其次设置页工作副本，末尾回退 PasswordSafe
+            // 仅真正切换提供商时预填 Key：已编辑值优先，其次设置页工作副本
+            // （initialApiKeys 在设置页 reset() 时已预填，不再实时读 PasswordSafe 避免 EDT 违规）
             if (providerChanged) {
                 apiKeyField.text = editedKeys[option.providerId]
                     ?: initialApiKeys[option.providerId]
-                    ?: AppSettings.getApiKey(option.providerId)
                     ?: ""
             }
             // 每条记录一个类型：类型与接口地址只读展示直接取选项
