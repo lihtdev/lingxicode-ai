@@ -23,6 +23,7 @@ import com.intellij.util.ui.JBUI
 import com.lihtdev.codesense.ai.ChatMessage
 import com.lihtdev.codesense.ai.OpenAiCompatClient
 import com.lihtdev.codesense.i18n.CodeSenseBundle
+import com.lihtdev.codesense.ui.ChipComponents
 import java.awt.BorderLayout
 import java.awt.Component
 import java.awt.Dimension
@@ -72,7 +73,7 @@ private object TagChipStyle {
 
 /**
  * Chip 圆角边框（样式见 [TagChipStyle]）。
- * 文件级共用：设置页表格标签列 / 编辑弹窗标签面板 / 选择提供商下拉的类型标签。
+ * 文件级共用：设置页表格标签列 / 编辑弹窗标签面板。
  */
 private class ChipBorder : javax.swing.border.AbstractBorder() {
     override fun paintBorder(
@@ -98,13 +99,8 @@ private class ChipBorder : javax.swing.border.AbstractBorder() {
 
 /**
  * 套餐类型展示文案（表格「类型」列 / 类型下拉渲染器 / 重复提示共用）。
- * 文件级私有函数，供本文件内各嵌套类直接调用。
+ * 本文件内各嵌套类直接调用共享函数 [providerPlanTypeLabel]（见 ProviderComboOption.kt）。
  */
-private fun planTypeLabel(type: ProviderPlanType): String = when (type) {
-    ProviderPlanType.TOKEN_PLAN -> CodeSenseBundle.message("provider.type.tokenPlan")
-    ProviderPlanType.CODING_PLAN -> CodeSenseBundle.message("provider.type.codingPlan")
-    ProviderPlanType.PAY_AS_YOU_GO -> CodeSenseBundle.message("provider.type.payAsYouGo")
-}
 
 /**
  * 设置页（Tools → CodeSense AI）。
@@ -125,7 +121,7 @@ class SettingsConfigurable : Configurable {
     // ---- UI 组件 ----
     private val tableModel = ModelTableModel()
     private val actionRenderer = ActionCellRenderer()
-    private val tagsRenderer = TagsCellRenderer()
+    private val modelTagsRenderer = ModelTagsCellRenderer()
     private val table = ModelTable(tableModel, actionRenderer)
 
     // 全局设置
@@ -159,7 +155,7 @@ class SettingsConfigurable : Configurable {
         // 数据列：hover 高亮（标签列改用 chip 渲染器）
         val dataRenderer = GrayRowRenderer()
         table.columnModel.getColumn(0).cellRenderer = dataRenderer
-        table.columnModel.getColumn(TAGS_COLUMN).cellRenderer = tagsRenderer
+        table.columnModel.getColumn(TAGS_COLUMN).cellRenderer = modelTagsRenderer
         table.columnModel.getColumn(2).cellRenderer = dataRenderer
         table.columnModel.getColumn(TYPE_COLUMN).cellRenderer = dataRenderer
         // 操作列：图标按钮
@@ -397,14 +393,14 @@ class SettingsConfigurable : Configurable {
             workingApiKeys,
         )
         if (dialog.showAndGet()) {
-            // 1) 删除的提供商：级联移除其全部模型条目
+            // 1) 删除的提供商：级联移除其全部模型条目（条目 providerId 带类型后缀，按 base 归一匹配）
             dialog.resultRemovedProviderIds.forEach { removedId ->
-                workingProviders.removeAll { it.providerId == removedId }
+                workingProviders.removeAll { ProviderIds.baseOf(it.providerId) == removedId }
             }
             // 2) 编辑的提供商：级联更新其模型条目的显示名与 baseUrl
             //    （按条目自身类型匹配档案中对应类型的 baseUrl，仅更新被编辑类型的条目）
             dialog.resultEditedProviders.forEach { (providerId, updated) ->
-                workingProviders.filter { it.providerId == providerId }.forEach { entry ->
+                workingProviders.filter { ProviderIds.baseOf(it.providerId) == providerId }.forEach { entry ->
                     entry.displayName = updated.displayName
                     updated.plans.firstOrNull { it.type == entry.planType }?.baseUrl?.let { entry.baseUrl = it }
                 }
@@ -511,13 +507,16 @@ class SettingsConfigurable : Configurable {
 
         // ---- 提供商信息区 ----
         // 选择提供商：一条记录一个类型，名称右侧以标签标注类型（见 ProviderOptionRenderer）；
-        // 类型并入提供商选择，不再单独提供「类型」下拉
+        // 类型并入提供商选择（不再提供「类型」下拉），类型值以只读行展示
         private val providerCombo = JComboBox<ProviderComboOption>().apply {
             renderer = ProviderOptionRenderer()
             minimumSize = Dimension(240, 30)
             addActionListener { onProviderSelected() }
         }
         private val providerValueLabel = JBLabel("").apply {
+            minimumSize = Dimension(200, preferredSize.height)
+        }
+        private val planTypeValueLabel = JBLabel("").apply {
             minimumSize = Dimension(200, preferredSize.height)
         }
         private val baseUrlValueLabel = JBLabel("").apply {
@@ -676,6 +675,9 @@ class SettingsConfigurable : Configurable {
             val providerLabel = JLabel(CodeSenseBundle.message("settings.provider")).apply {
                 minimumSize = preferredSize
             }
+            val planTypeLabel = JLabel(CodeSenseBundle.message("settings.planType")).apply {
+                minimumSize = preferredSize
+            }
             val baseUrlLabel = JLabel(CodeSenseBundle.message("settings.baseUrl")).apply {
                 minimumSize = preferredSize
             }
@@ -702,6 +704,8 @@ class SettingsConfigurable : Configurable {
                 .addComponentToRightColumn(hintLabel)
                 .addVerticalGap(6)
                 .addLabeledComponent(providerLabel, providerValueLabel)
+                .addVerticalGap(6)
+                .addLabeledComponent(planTypeLabel, planTypeValueLabel)
                 .addVerticalGap(6)
                 .addLabeledComponent(baseUrlLabel, baseUrlValueLabel)
                 .addVerticalGap(6)
@@ -740,7 +744,7 @@ class SettingsConfigurable : Configurable {
             if (isLoading) return
             val option = selectedOption() ?: return
             // 切换提供商前，把当前输入暂存到上一个提供商的编辑副本
-            // （同一提供商的多条类型记录共享 providerId，互相切换不视为切换提供商，保留当前输入）
+            // （同名不同类型是不同提供商：providerId 带类型后缀互不相同，切换即视为切换提供商）
             val prevId = selectedProviderId
             val providerChanged = prevId != option.providerId
             if (providerChanged && prevId != null) {
@@ -759,7 +763,8 @@ class SettingsConfigurable : Configurable {
                         ?: AppSettings.getApiKey(option.providerId)
                     apiKeyField.text = newKey ?: ""
                 }
-                // 每条记录一个类型：接口地址只读展示直接取选项
+                // 每条记录一个类型：类型与接口地址只读展示直接取选项
+                planTypeValueLabel.text = providerPlanTypeLabel(option.type)
                 baseUrlValueLabel.text = option.baseUrl
                 editProviderButton.isEnabled = option.isCustom
                 deleteProviderButton.isEnabled = option.isCustom
@@ -798,9 +803,9 @@ class SettingsConfigurable : Configurable {
                 val index = selectId?.let { id ->
                     (0 until providerCombo.itemCount).firstOrNull {
                         val o = providerCombo.getItemAt(it)
-                        o.providerId == id && (selectType == null || o.type == selectType)
+                        ProviderIds.baseOf(o.providerId) == id && (selectType == null || o.type == selectType)
                     } ?: (0 until providerCombo.itemCount).firstOrNull {
-                        providerCombo.getItemAt(it).providerId == id
+                        ProviderIds.baseOf(providerCombo.getItemAt(it).providerId) == id
                     }
                 }
                 providerCombo.selectedIndex = index ?: 0
@@ -816,7 +821,7 @@ class SettingsConfigurable : Configurable {
         private fun selectedCustomProvider(): UserProvider? {
             val option = selectedOption() ?: return null
             if (!option.isCustom) return null
-            return workingUserProviders.firstOrNull { it.id == option.providerId }
+            return workingUserProviders.firstOrNull { it.id == ProviderIds.baseOf(option.providerId) }
         }
 
         /** 打开提供商编辑器：existing=null 新建，否则编辑该自定义提供商 */
@@ -846,7 +851,7 @@ class SettingsConfigurable : Configurable {
         /** 删除选中的自定义提供商：二次确认（含其下模型数量），确认后从档案与下拉移除 */
         private fun confirmDeleteProvider() {
             val provider = selectedCustomProvider() ?: return
-            val modelCount = existingProviders.count { it.providerId == provider.id }
+            val modelCount = existingProviders.count { ProviderIds.baseOf(it.providerId) == provider.id }
             val result = Messages.showYesNoDialog(
                 null as Project?,
                 CodeSenseBundle.message(
@@ -1056,7 +1061,7 @@ class SettingsConfigurable : Configurable {
                     CodeSenseBundle.message(
                         "settings.addProvider.duplicate",
                         option.displayName,
-                        planTypeLabel(planType),
+                        providerPlanTypeLabel(planType),
                         duplicates.joinToString("、") { it.trim() },
                     ),
                     CodeSenseBundle.message("settings.addProvider.title"),
@@ -1192,7 +1197,7 @@ class SettingsConfigurable : Configurable {
                     CodeSenseBundle.message(
                         "settings.addProvider.providerName.duplicate",
                         name,
-                        planTypeLabel(planType),
+                        providerPlanTypeLabel(planType),
                     ),
                     dialogTitle,
                 )
@@ -1210,16 +1215,16 @@ class SettingsConfigurable : Configurable {
     // ---- 标签面板组件（chip 风格，最多 3 个） ----
 
     /**
-     * 标签编辑面板：以 chip（圆角边框标签）形式展示标签，右侧"+"按钮添加，最多 [MAX_TAGS] 个。
-     * 每个 chip 带"×"删除按钮，点击即可移除。
+     * 模型标签编辑面板：以 chip（圆角边框标签）形式展示模型标签（区别于提供商标签），
+     * 右侧"+"按钮添加，最多 [MAX_TAGS] 个。每个 chip 带"×"删除按钮，点击即可移除。
      */
-    private class TagsPanel : JPanel(FlowLayout(FlowLayout.LEFT, 4, 2)) {
+    private class ModelTagsPanel : JPanel(FlowLayout(FlowLayout.LEFT, 4, 2)) {
 
         companion object {
             const val MAX_TAGS = 3
         }
 
-        private val tags = mutableListOf<String>()
+        private val modelTags = mutableListOf<String>()
 
         /** 内联输入行（输入框 + 确认 + 取消），默认隐藏 */
         private val inlineInput = JTextField(10).apply {
@@ -1264,11 +1269,11 @@ class SettingsConfigurable : Configurable {
             rebuildChips()
         }
 
-        fun getTags(): List<String> = tags.toList()
+        fun getModelTags(): List<String> = modelTags.toList()
 
-        fun setTags(list: List<String>) {
-            tags.clear()
-            tags.addAll(list.take(MAX_TAGS))
+        fun setModelTags(list: List<String>) {
+            modelTags.clear()
+            modelTags.addAll(list.take(MAX_TAGS))
             rebuildChips()
         }
 
@@ -1276,11 +1281,11 @@ class SettingsConfigurable : Configurable {
         private fun rebuildChips() {
             removeAll()
             // 添加已有标签 chip
-            tags.forEachIndexed { index, tag ->
+            modelTags.forEachIndexed { index, tag ->
                 add(createChip(tag, index))
             }
             // 添加按钮（未满时显示）
-            if (tags.size < MAX_TAGS) {
+            if (modelTags.size < MAX_TAGS) {
                 add(addButton)
             }
             // 内联输入行
@@ -1306,8 +1311,8 @@ class SettingsConfigurable : Configurable {
                 preferredSize = Dimension(14, 14)
                 toolTipText = CodeSenseBundle.message("settings.action.delete")
                 addActionListener {
-                    if (index < tags.size) {
-                        tags.removeAt(index)
+                    if (index < modelTags.size) {
+                        modelTags.removeAt(index)
                         rebuildChips()
                     }
                 }
@@ -1328,15 +1333,15 @@ class SettingsConfigurable : Configurable {
 
         private fun hideInlineInput() {
             inlinePanel.isVisible = false
-            addButton.isVisible = tags.size < MAX_TAGS
+            addButton.isVisible = modelTags.size < MAX_TAGS
             revalidate()
             repaint()
         }
 
         private fun commitInlineInput() {
             val value = inlineInput.text.trim()
-            if (value.isNotEmpty() && value !in tags && tags.size < MAX_TAGS) {
-                tags.add(value)
+            if (value.isNotEmpty() && value !in modelTags && modelTags.size < MAX_TAGS) {
+                modelTags.add(value)
             }
             hideInlineInput()
             rebuildChips()
@@ -1363,7 +1368,7 @@ class SettingsConfigurable : Configurable {
             addActionListener { fetchModels() }
             minimumSize = Dimension(75, 30)
         }
-        private val tagsPanel = TagsPanel()
+        private val modelTagsPanel = ModelTagsPanel()
         private val apiKeyField = JBPasswordField().apply {
             minimumSize = Dimension(200, 30)
         }
@@ -1389,7 +1394,7 @@ class SettingsConfigurable : Configurable {
             val providerValueLabel = JBLabel(initialConfig.displayName).apply {
                 minimumSize = Dimension(200, preferredSize.height)
             }
-            val planTypeValueLabel = JBLabel(planTypeLabel(initialConfig.planType)).apply {
+            val planTypeValueLabel = JBLabel(providerPlanTypeLabel(initialConfig.planType)).apply {
                 minimumSize = Dimension(200, preferredSize.height)
             }
             val baseUrlValueLabel = JBLabel(initialConfig.baseUrl).apply {
@@ -1403,14 +1408,14 @@ class SettingsConfigurable : Configurable {
             }
 
             // 标签提示（最多 N 个）
-            val tagsHintLabel = JBLabel(CodeSenseBundle.message("settings.editProvider.tags.max", TagsPanel.MAX_TAGS.toString())).apply {
+            val tagsHintLabel = JBLabel(CodeSenseBundle.message("settings.editProvider.tags.max", ModelTagsPanel.MAX_TAGS.toString())).apply {
                 font = font.deriveFont(Font.PLAIN, 10f)
                 foreground = JBColor.GRAY
                 border = JBUI.Borders.empty(2, 0, 0, 0)
             }
 
             val tagsWithHint = JPanel(BorderLayout()).apply {
-                add(tagsPanel, BorderLayout.NORTH)
+                add(modelTagsPanel, BorderLayout.NORTH)
                 add(tagsHintLabel, BorderLayout.SOUTH)
             }
 
@@ -1491,7 +1496,7 @@ class SettingsConfigurable : Configurable {
                 if (currentModel != null) arrayOf(currentModel) else emptyArray(),
             )
             modelCombo.selectedItem = currentModel
-            tagsPanel.setTags(initialConfig.tags)
+            modelTagsPanel.setModelTags(initialConfig.modelTags)
             apiKeyField.text = initialApiKey ?: ""
         }
 
@@ -1636,17 +1641,17 @@ class SettingsConfigurable : Configurable {
                     CodeSenseBundle.message(
                         "settings.editProvider.duplicate",
                         initialConfig.displayName,
-                        planTypeLabel(initialConfig.planType),
+                        providerPlanTypeLabel(initialConfig.planType),
                         model,
                     ),
                     CodeSenseBundle.message("settings.editProvider.title"),
                 )
                 return
             }
-            val tags = tagsPanel.getTags().toMutableList()
+            val modelTags = modelTagsPanel.getModelTags().toMutableList()
             resultConfig = initialConfig.copy(
                 model = model,
-                tags = tags,
+                modelTags = modelTags,
             )
             resultApiKey = String(apiKeyField.password)
             super.doOKAction()
@@ -1683,7 +1688,7 @@ class SettingsConfigurable : Configurable {
                 0 -> p.model
                 1 -> p
                 2 -> p.displayName
-                3 -> planTypeLabel(p.planType)
+                3 -> providerPlanTypeLabel(p.planType)
                 4 -> p
                 else -> null
             }
@@ -1817,14 +1822,14 @@ class SettingsConfigurable : Configurable {
     // ---- 标签列渲染器（chip 圆角边框样式 + 超宽截断省略号） ----
 
     /**
-     * 标签列渲染器：把标签逐个绘制为带圆角边框的 chip。
+     * 模型标签列渲染器：把模型标签逐个绘制为带圆角边框的 chip。
      * - 无标签：单元格留空；
      * - 放不下：截断并绘制「…」，悬停时 tooltip 展示完整标签；
      * - hover 行：单元格背景高亮（与其它列一致）。
      */
-    private class TagsCellRenderer : JComponent(), TableCellRenderer {
+    private class ModelTagsCellRenderer : JComponent(), TableCellRenderer {
 
-        private var tags: List<String> = emptyList()
+        private var modelTags: List<String> = emptyList()
         private var hover = false
         private var cellBackground: java.awt.Color = JBColor.background()
         private var cellForeground: java.awt.Color = JBColor.foreground()
@@ -1834,7 +1839,7 @@ class SettingsConfigurable : Configurable {
             row: Int, column: Int,
         ): Component {
             val config = value as? AiProviderConfig
-            tags = config?.tags ?: emptyList()
+            modelTags = config?.modelTags ?: emptyList()
             val mt = table as? ModelTable
             hover = mt?.hoverRow == row
             cellBackground = if (hover) table.selectionBackground else table.background
@@ -1845,8 +1850,8 @@ class SettingsConfigurable : Configurable {
             font = baseFont.deriveFont(11f)
             // 截断时 tooltip 展示完整标签
             val cellWidth = table.getCellRect(row, column, false).width
-            toolTipText = if (tags.isNotEmpty() && wouldTruncate(cellWidth)) {
-                tags.joinToString(", ")
+            toolTipText = if (modelTags.isNotEmpty() && wouldTruncate(cellWidth)) {
+                modelTags.joinToString(", ")
             } else {
                 null
             }
@@ -1862,13 +1867,13 @@ class SettingsConfigurable : Configurable {
             // 单元格背景：hover 高亮（行不可选，无选中背景）
             g2.color = cellBackground
             g2.fillRect(0, 0, width, height)
-            if (tags.isEmpty()) return
+            if (modelTags.isEmpty()) return
 
             val fm = g2.fontMetrics
             val chipH = fm.maxAscent + fm.maxDescent + TagChipStyle.V_PAD * 2
             val y = (height - chipH) / 2
             var x = LEFT_INSET
-            tags.forEachIndexed { index, tag ->
+            modelTags.forEachIndexed { index, tag ->
                 val chipW = fm.stringWidth(tag) + TagChipStyle.H_PAD * 2
                 if (x + chipW > width) {
                     // 放不下剩余 chip：空间足够时补一个省略号
@@ -1898,7 +1903,7 @@ class SettingsConfigurable : Configurable {
         private fun wouldTruncate(cellWidth: Int): Boolean {
             val fm = getFontMetrics(font)
             var x = LEFT_INSET
-            tags.forEach { tag ->
+            modelTags.forEach { tag ->
                 val chipW = fm.stringWidth(tag) + TagChipStyle.H_PAD * 2
                 if (x + chipW > cellWidth) return true
                 x += chipW + CHIP_GAP
@@ -1997,7 +2002,7 @@ class SettingsConfigurable : Configurable {
         ): Component {
             val text = when (val type = value as? ProviderPlanType) {
                 null -> value.toString()
-                else -> planTypeLabel(type)
+                else -> providerPlanTypeLabel(type)
             }
             delegate.text = text
             if (isSelected) {
@@ -2026,7 +2031,7 @@ class SettingsConfigurable : Configurable {
             val option = value as? ProviderComboOption
             if (option != null) {
                 val name = if (option.isCustom) "${option.displayName}（自定义）" else option.displayName
-                item.setContent(name, planTypeLabel(option.type), option.baseUrl)
+                item.setContent(name, providerPlanTypeLabel(option.type), option.baseUrl)
             } else {
                 item.setContent(value?.toString() ?: "", "", "")
             }
@@ -2045,18 +2050,10 @@ class SettingsConfigurable : Configurable {
         }
     }
 
-    /** 提供商下拉条目组件：名称标签 + 类型 chip（chip 隐藏时仅显示名称） */
+    /** 提供商下拉条目组件：名称标签 + 类型 chip（chip 隐藏时仅显示名称），chip 复用共享组件 */
     private class ProviderOptionItem : JPanel(FlowLayout(FlowLayout.LEFT, 6, 0)) {
         private val nameLabel = JLabel()
-        private val typeLabel = JLabel().apply {
-            // 与表格标签 chip 字号保持一致；渲染器组件不在组件层级树中，font 可能为空需安全回退
-            font = (font ?: java.awt.Font(java.awt.Font.SANS_SERIF, java.awt.Font.PLAIN, 12)).deriveFont(11f)
-        }
-        private val typeChip = JPanel(FlowLayout(FlowLayout.LEFT, 0, 0)).apply {
-            isOpaque = false
-            border = ChipBorder()
-            add(typeLabel)
-        }
+        private val typeChip = ChipComponents.chipLabel("")
 
         init {
             border = JBUI.Borders.empty(1, 0)
@@ -2067,7 +2064,7 @@ class SettingsConfigurable : Configurable {
 
         fun setContent(name: String, typeText: String, baseUrl: String) {
             nameLabel.text = name
-            typeLabel.text = typeText
+            (typeChip.getComponent(0) as? JLabel)?.text = typeText
             typeChip.isVisible = typeText.isNotEmpty()
             // 名称或标签被裁切时，tooltip 展示完整内容（含接口地址）
             toolTipText = if (typeText.isEmpty()) {
@@ -2081,7 +2078,7 @@ class SettingsConfigurable : Configurable {
             this.background = background
             isOpaque = true
             nameLabel.foreground = foreground
-            typeLabel.foreground = foreground
+            (typeChip.getComponent(0) as? JLabel)?.foreground = foreground
         }
     }
 
@@ -2093,12 +2090,12 @@ class SettingsConfigurable : Configurable {
         private const val ACTION_ICON_W = 26
 
         // 列宽：数据列按「最小宽 + 理想宽（比例权重）」配置，实际宽度由 ModelTable 按窗口宽度分配
-        private const val COL_MODEL_W = 190           // 模型列理想宽
-        private const val COL_MODEL_MIN = 140
+        private const val COL_MODEL_W = 175           // 模型列理想宽（较原 190 略微收窄）
+        private const val COL_MODEL_MIN = 135
         private const val COL_TYPE_W = 100            // 类型列理想宽
         private const val COL_TYPE_MIN = 80
-        private const val COL_TAGS_W = 240            // 标签列理想宽（承载 chip 标签，比原来更宽）
-        private const val COL_TAGS_MIN = 150
+        private const val COL_TAGS_W = 220            // 标签列理想宽（承载 chip 标签；较原 240 略微收窄）
+        private const val COL_TAGS_MIN = 145
         private const val COL_PROVIDER_W = 130        // 供应商列理想宽
         private const val COL_PROVIDER_MIN = 100
         private const val COL_ACTION_W = 68           // 操作列固定宽（min=max）

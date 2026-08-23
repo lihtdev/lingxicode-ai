@@ -95,4 +95,29 @@ class UserProviderBackfillTest {
         )
         assertTrue(result.isEmpty())
     }
+
+    @Test
+    fun `带类型后缀的自定义 providerId 归并回 base 档案`() {
+        val result = UserProvider.backfillFrom(
+            listOf(
+                entry("custom-a:PAY_AS_YOU_GO", "我的厂商", ProviderPlanType.PAY_AS_YOU_GO),
+                entry("custom-a:TOKEN_PLAN", "我的厂商", ProviderPlanType.TOKEN_PLAN, "https://token/"),
+            ),
+        )
+        assertEquals(1, result.size)
+        val p = result.first()
+        assertEquals("custom-a", p.id)
+        assertEquals(setOf(ProviderPlanType.PAY_AS_YOU_GO, ProviderPlanType.TOKEN_PLAN), p.plans.map { it.type }.toSet())
+    }
+
+    @Test
+    fun `带类型后缀的预设 providerId 不参与回填`() {
+        val result = UserProvider.backfillFrom(
+            listOf(
+                entry("qwen:PAY_AS_YOU_GO", "Qwen (Alibaba)", ProviderPlanType.PAY_AS_YOU_GO),
+                entry("minimax:TOKEN_PLAN", "MiniMax", ProviderPlanType.TOKEN_PLAN),
+            ),
+        )
+        assertTrue(result.isEmpty())
+    }
 }

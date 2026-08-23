@@ -97,6 +97,10 @@ object ProviderPresets {
         ),
     )
 
-    /** 按 id 查找预设 */
-    fun byId(id: String): ProviderPreset? = ALL.firstOrNull { it.id == id }
+    /**
+     * 按 id 查找预设。同时兼容带类型后缀的 providerId（`qwen:TOKEN_PLAN` → `qwen`），
+     * 供「该提供商是否为预设」的判断使用。
+     */
+    fun byId(id: String): ProviderPreset? =
+        ALL.firstOrNull { it.id == id || id.startsWith("${it.id}:") }
 }

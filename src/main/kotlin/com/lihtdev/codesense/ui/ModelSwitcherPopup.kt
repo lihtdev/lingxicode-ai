@@ -15,7 +15,9 @@ import com.intellij.util.ui.EmptyIcon
 import com.intellij.util.ui.JBUI
 import com.lihtdev.codesense.i18n.CodeSenseBundle
 import com.lihtdev.codesense.settings.AppSettings
+import com.lihtdev.codesense.settings.ProviderPlanType
 import com.lihtdev.codesense.settings.SettingsConfigurable
+import com.lihtdev.codesense.settings.providerPlanTypeLabel
 import java.awt.BorderLayout
 import java.awt.Component
 import java.awt.Dimension
@@ -42,13 +44,18 @@ object ModelSwitcherPopup {
 
     /** 列表条目：分组标题或模型条目 */
     sealed class ListEntry {
-        /** 提供商分组标题（不可选） */
-        data class Header(val displayName: String) : ListEntry()
-        /** 模型条目 */
+        /** 提供商分组标题（不可选）：名称 + 类型（组内 providerId 相同，类型一致） */
+        data class Header(
+            val displayName: String,
+            val planType: ProviderPlanType,
+        ) : ListEntry()
+
+        /** 模型条目：模型名 + 模型标签 */
         data class Model(
             val id: String,
             val providerId: String,
             val model: String,
+            val modelTags: List<String>,
         ) : ListEntry()
     }
 
@@ -86,18 +93,30 @@ object ModelSwitcherPopup {
         panel.add(headerBox, BorderLayout.NORTH)
 
         if (provider != null) {
-            // 当前模型信息：第一行模型名，第二行灰字「提供商」
+            // 当前模型信息：第一行模型名 + 模型标签 chip，第二行灰字「提供商 · 类型」
             val infoPanel = JPanel().apply {
                 layout = javax.swing.BoxLayout(this, javax.swing.BoxLayout.Y_AXIS)
             }
-            infoPanel.add(JBLabel(provider.model).apply {
-                font = font.deriveFont(Font.PLAIN, 12f)
-            })
-            infoPanel.add(JBLabel(provider.displayName).apply {
+            val modelRow = JPanel(FlowLayout(FlowLayout.LEFT, 6, 0)).apply {
+                isOpaque = false
+                add(JBLabel(provider.model).apply {
+                    font = font.deriveFont(Font.PLAIN, 12f)
+                })
+                if (provider.modelTags.isNotEmpty()) {
+                    add(ChipComponents.chipsRow(provider.modelTags, LIST_WIDTH - 140))
+                }
+            }
+            modelRow.alignmentX = Component.LEFT_ALIGNMENT
+            val providerLabel = JBLabel(
+                "${provider.displayName} · ${providerPlanTypeLabel(provider.planType)}",
+            ).apply {
                 font = font.deriveFont(Font.PLAIN, 11f)
                 foreground = JBColor.GRAY
                 border = JBUI.Borders.emptyTop(2)
-            })
+            }
+            providerLabel.alignmentX = Component.LEFT_ALIGNMENT
+            infoPanel.add(modelRow)
+            infoPanel.add(providerLabel)
             panel.add(infoPanel, BorderLayout.CENTER)
         } else {
             val noModelLabel = JBLabel(CodeSenseBundle.message("popup.currentModel.noModel")).apply {
@@ -135,16 +154,16 @@ object ModelSwitcherPopup {
             return
         }
 
-        // 按 providerId 分组构建模型列表
+        // 按 providerId 分组构建模型列表（同名不同类型 = 不同 providerId，自然各自成组）
         val entries = mutableListOf<ListEntry>()
         val grouped = providers.groupBy { it.providerId }
         for ((_, group) in grouped) {
             val first = group.first()
-            entries.add(ListEntry.Header(first.displayName))
+            entries.add(ListEntry.Header(first.displayName, first.planType))
             group.forEach { p ->
                 entries.add(
                     ListEntry.Model(
-                        p.id, p.providerId, p.model,
+                        p.id, p.providerId, p.model, p.modelTags,
                     ),
                 )
             }
@@ -218,11 +237,13 @@ object ModelSwitcherPopup {
         showAbove(popup, owner)
     }
 
-    /** 分组条目渲染器（分组标题灰字加粗 + 激活模型 ✓ 标记，行距对称均匀） */
+    /**
+     * 分组条目渲染器：标题行 = 提供商名（灰字加粗）+ 类型 chip；模型行 = ✓ 标记 + 模型名 + 模型标签 chip。
+     * 每次渲染重建复合面板（弹窗行数有限，代价可忽略），选中态配色随列表。
+     */
     private class GroupedEntryRenderer(
         private val activeProvider: com.lihtdev.codesense.settings.AiProviderConfig?,
     ) : ListCellRenderer<ListEntry> {
-        private val delegate = JBLabel()
         private val checkIcon = AllIcons.Actions.Checked
         private val checkIconSelected = AllIcons.Actions.Checked_selected
         private val checkPlaceholder = EmptyIcon.create(checkIcon)
@@ -230,41 +251,55 @@ object ModelSwitcherPopup {
         override fun getListCellRendererComponent(
             list: JList<out ListEntry>?, value: ListEntry, index: Int,
             isSelected: Boolean, cellHasFocus: Boolean,
-        ): Component {
-            delegate.iconTextGap = 6
-            when (value) {
-                is ListEntry.Header -> {
-                    delegate.text = value.displayName
-                    delegate.icon = null
-                    delegate.font = delegate.font.deriveFont(Font.BOLD, 12f)
-                    delegate.foreground = JBColor.GRAY
-                    // 分组上方留白更大、与下方成员紧凑，形成分层
-                    delegate.border = JBUI.Borders.empty(9, 10, 3, 10)
-                    delegate.background = list?.background
-                    delegate.isOpaque = true
-                }
-                is ListEntry.Model -> {
-                    val active = value.id == activeProvider?.id
-                    delegate.text = value.model
-                    delegate.icon = when {
-                        active && isSelected -> checkIconSelected
-                        active -> checkIcon
-                        // 非激活行用同尺寸空白图标占位，保证各行文字左对齐不跳动
-                        else -> checkPlaceholder
-                    }
-                    delegate.font = delegate.font.deriveFont(if (active) Font.BOLD else Font.PLAIN, 12f)
-                    delegate.border = JBUI.Borders.empty(5, 10, 4, 10)
-                    if (isSelected) {
-                        delegate.background = list?.selectionBackground
-                        delegate.foreground = list?.selectionForeground
-                    } else {
-                        delegate.background = list?.background
-                        delegate.foreground = list?.foreground
-                    }
-                    delegate.isOpaque = true
-                }
+        ): Component = when (value) {
+            is ListEntry.Header -> headerPanel(value, list, isSelected)
+            is ListEntry.Model -> modelPanel(value, list, isSelected)
+        }
+
+        private fun headerPanel(header: ListEntry.Header, list: JList<out ListEntry>?, isSelected: Boolean): JComponent {
+            val row = JPanel(FlowLayout(FlowLayout.LEFT, 6, 3)).apply {
+                background = if (isSelected) list?.selectionBackground ?: JBColor.background()
+                else list?.background ?: JBColor.background()
+                isOpaque = true
+                // 分组上方留白更大、与下方成员紧凑，形成分层
+                border = JBUI.Borders.empty(7, 10, 3, 10)
             }
-            return delegate
+            row.add(JLabel(header.displayName).apply {
+                font = font.deriveFont(Font.BOLD, 12f)
+                foreground = JBColor.GRAY
+            })
+            row.add(ChipComponents.chipLabel(providerPlanTypeLabel(header.planType)))
+            return row
+        }
+
+        private fun modelPanel(model: ListEntry.Model, list: JList<out ListEntry>?, isSelected: Boolean): JComponent {
+            val active = model.id == activeProvider?.id
+            val row = JPanel(FlowLayout(FlowLayout.LEFT, 6, 3)).apply {
+                background = if (isSelected) list?.selectionBackground ?: JBColor.background()
+                else list?.background ?: JBColor.background()
+                isOpaque = true
+                border = JBUI.Borders.empty(3, 10, 3, 10)
+            }
+            row.add(JLabel().apply {
+                icon = when {
+                    active && isSelected -> checkIconSelected
+                    active -> checkIcon
+                    // 非激活行用同尺寸空白图标占位，保证各行文字左对齐不跳动
+                    else -> checkPlaceholder
+                }
+            })
+            row.add(JLabel(model.model).apply {
+                font = font.deriveFont(if (active) Font.BOLD else Font.PLAIN, 12f)
+                foreground = if (isSelected) {
+                    list?.selectionForeground ?: JBColor.foreground()
+                } else {
+                    list?.foreground ?: JBColor.foreground()
+                }
+            })
+            if (model.modelTags.isNotEmpty()) {
+                row.add(ChipComponents.chipsRow(model.modelTags, LIST_WIDTH - 110))
+            }
+            return row
         }
     }
 
@@ -352,11 +387,11 @@ object ModelSwitcherPopup {
     /** 屏幕边缘安全留白 */
     private const val EDGE_MARGIN = 8
 
-    /** 二级列表固定宽度 */
-    private const val LIST_WIDTH = 280
+    /** 二级列表固定宽度（容纳类型/模型标签 chip，较原先略宽） */
+    private const val LIST_WIDTH = 296
 
     /** 二级列表行高 */
-    private const val ROW_HEIGHT = 26
+    private const val ROW_HEIGHT = 28
 
     /** 二级列表最多可见行数（超出滚动） */
     private const val MAX_VISIBLE_ROWS = 10

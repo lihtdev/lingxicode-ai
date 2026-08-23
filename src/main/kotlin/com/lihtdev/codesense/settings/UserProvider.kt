@@ -30,7 +30,8 @@ data class UserProvider(
             val merged = LinkedHashMap<String, UserProvider>()
             existing.forEach { merged[it.id] = it.copy(plans = it.plans.toMutableList()) }
             entries
-                .groupBy { it.providerId }
+                // 按 base id 分组：带类型后缀的 providerId（自定义-x:TOKEN_PLAN）归并回同一档案
+                .groupBy { ProviderIds.baseOf(it.providerId) }
                 .toSortedMap()
                 .forEach { (providerId, group) ->
                     // 仅回填自定义提供商（providerId 不属于任何预设）

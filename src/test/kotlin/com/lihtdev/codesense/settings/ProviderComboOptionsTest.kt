@@ -5,10 +5,11 @@ import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 
 /**
- * 提供商档案 → 选择下拉选项（ProviderComboOption）单元测试。
+ * 提供商档案 → 选择下拉选项（ProviderComboOption）与 ProviderIds 单元测试。
  *
  * 新规则：一条提供商记录只能有一个类型，多种类型拆为多条记录，
- * 不因 baseUrl 相同而合并（原「同 baseUrl 多标签合并展示」规则作废）。
+ * 不因 baseUrl 相同而合并；同名不同类的 providerId 不同（带类型后缀），
+ * API Key 各自独立存储。
  */
 class ProviderComboOptionsTest {
 
@@ -25,7 +26,8 @@ class ProviderComboOptionsTest {
         assertEquals(2, result.size)
         assertEquals(listOf(ProviderPlanType.PAY_AS_YOU_GO, ProviderPlanType.TOKEN_PLAN), result.map { it.type })
         assertEquals(listOf("https://a/v1", "https://b/v1"), result.map { it.baseUrl })
-        assertEquals(listOf("qwen", "qwen"), result.map { it.providerId })
+        // providerId 带类型后缀互不相同 → API Key 槽独立
+        assertEquals(listOf("qwen:PAY_AS_YOU_GO", "qwen:TOKEN_PLAN"), result.map { it.providerId })
         assertTrue(result.all { !it.isCustom })
     }
 
@@ -46,6 +48,7 @@ class ProviderComboOptionsTest {
             result.map { it.type },
         )
         assertEquals(listOf("https://api.minimaxi.com/v1", "https://api.minimaxi.com/v1"), result.map { it.baseUrl })
+        assertEquals(listOf("minimax:PAY_AS_YOU_GO", "minimax:TOKEN_PLAN"), result.map { it.providerId })
     }
 
     @Test
@@ -64,6 +67,10 @@ class ProviderComboOptionsTest {
             listOf(ProviderPlanType.PAY_AS_YOU_GO, ProviderPlanType.TOKEN_PLAN, ProviderPlanType.CODING_PLAN),
             result.map { it.type },
         )
+        assertEquals(
+            listOf("p:PAY_AS_YOU_GO", "p:TOKEN_PLAN", "p:CODING_PLAN"),
+            result.map { it.providerId },
+        )
         assertTrue(result.all { it.isCustom })
     }
 
@@ -79,6 +86,7 @@ class ProviderComboOptionsTest {
         )
         assertEquals(1, result.size)
         assertEquals(ProviderPlanType.TOKEN_PLAN, result.first().type)
+        assertEquals("p:TOKEN_PLAN", result.first().providerId)
     }
 
     @Test
@@ -98,5 +106,29 @@ class ProviderComboOptionsTest {
     @Test
     fun `空 plans 返回空列表`() {
         assertTrue(ProviderComboOptions.of("p", "P", emptyList(), isCustom = true).isEmpty())
+    }
+
+    // ---- ProviderIds ----
+
+    @Test
+    fun `ProviderIds of 生成带类型后缀的唯一 id`() {
+        assertEquals("qwen:TOKEN_PLAN", ProviderIds.of("qwen", ProviderPlanType.TOKEN_PLAN))
+        assertEquals("custom-1:PAY_AS_YOU_GO", ProviderIds.of("custom-1", ProviderPlanType.PAY_AS_YOU_GO))
+    }
+
+    @Test
+    fun `ProviderIds baseOf 归一后缀并兼容旧数据`() {
+        assertEquals("qwen", ProviderIds.baseOf("qwen:TOKEN_PLAN"))
+        assertEquals("custom-1", ProviderIds.baseOf("custom-1:PAY_AS_YOU_GO"))
+        // 无 ':' 的旧形态原样返回
+        assertEquals("qwen", ProviderIds.baseOf("qwen"))
+        assertEquals("custom-1", ProviderIds.baseOf("custom-1"))
+    }
+
+    @Test
+    fun `ProviderIds isLegacy 判定旧形态`() {
+        assertTrue(ProviderIds.isLegacy("qwen"))
+        assertTrue(ProviderIds.isLegacy("custom-1"))
+        assertTrue(!ProviderIds.isLegacy("qwen:TOKEN_PLAN"))
     }
 }
