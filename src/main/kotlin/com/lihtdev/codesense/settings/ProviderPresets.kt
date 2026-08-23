@@ -72,7 +72,7 @@ object ProviderPresets {
                 "MiniMax-M2",
             ),
             plans = listOf(
-                // 两种类型 baseUrl 相同，类型仅用于区分计费套餐
+                // 两类型 baseUrl 相同：按「一条记录一个类型」规则，选择列表中仍拆为两条记录
                 PlanPreset(ProviderPlanType.PAY_AS_YOU_GO, "https://api.minimaxi.com/v1"),
                 PlanPreset(ProviderPlanType.TOKEN_PLAN, "https://api.minimaxi.com/v1"),
             ),

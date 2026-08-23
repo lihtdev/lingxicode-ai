@@ -28,6 +28,8 @@ import java.awt.Component
 import java.awt.Dimension
 import java.awt.FlowLayout
 import java.awt.Font
+import java.awt.GridBagConstraints
+import java.awt.GridBagLayout
 import java.awt.Rectangle
 import java.awt.event.MouseAdapter
 import java.awt.event.MouseEvent
@@ -66,6 +68,32 @@ private object TagChipStyle {
 
     /** chip 垂直内边距（文字上下） */
     const val V_PAD = 3
+}
+
+/**
+ * Chip 圆角边框（样式见 [TagChipStyle]）。
+ * 文件级共用：设置页表格标签列 / 编辑弹窗标签面板 / 选择提供商下拉的类型标签。
+ */
+private class ChipBorder : javax.swing.border.AbstractBorder() {
+    override fun paintBorder(
+        c: Component?, g: java.awt.Graphics?,
+        x: Int, y: Int, width: Int, height: Int,
+    ) {
+        val g2 = g as java.awt.Graphics2D
+        g2.setRenderingHint(
+            java.awt.RenderingHints.KEY_ANTIALIASING,
+            java.awt.RenderingHints.VALUE_ANTIALIAS_ON,
+        )
+        // 灰色填充背景
+        g2.color = TagChipStyle.background
+        g2.fillRoundRect(x, y, width - 1, height - 1, TagChipStyle.ARC, TagChipStyle.ARC)
+        // 边框线
+        g2.color = JBColor.border()
+        g2.drawRoundRect(x, y, width - 1, height - 1, TagChipStyle.ARC, TagChipStyle.ARC)
+    }
+
+    override fun getBorderInsets(c: Component?) =
+        JBUI.insets(TagChipStyle.V_PAD, TagChipStyle.H_PAD, TagChipStyle.V_PAD, TagChipStyle.H_PAD)
 }
 
 /**
@@ -122,10 +150,11 @@ class SettingsConfigurable : Configurable {
         table.tableHeader.reorderingAllowed = false
         table.autoResizeMode = JTable.AUTO_RESIZE_OFF
         table.fillsViewportHeight = true
-        setFixedColumnWidth(0, COL_MODEL_W)
-        setFixedColumnWidth(TAGS_COLUMN, COL_TAGS_W)
-        setFixedColumnWidth(2, COL_PROVIDER_W)
-        setFixedColumnWidth(TYPE_COLUMN, COL_TYPE_W)
+        // 数据列：只设最小宽与理想宽，实际列宽由 ModelTable 按窗口宽度比例分配
+        configureModelColumn(0, COL_MODEL_MIN, COL_MODEL_W)
+        configureModelColumn(TAGS_COLUMN, COL_TAGS_MIN, COL_TAGS_W)
+        configureModelColumn(2, COL_PROVIDER_MIN, COL_PROVIDER_W)
+        configureModelColumn(TYPE_COLUMN, COL_TYPE_MIN, COL_TYPE_W)
         setFixedColumnWidth(ACTION_COLUMN, COL_ACTION_W)
         // 数据列：hover 高亮（标签列改用 chip 渲染器）
         val dataRenderer = GrayRowRenderer()
@@ -272,9 +301,10 @@ class SettingsConfigurable : Configurable {
         }
 
         val scrollPane = JScrollPane(table).apply {
-            preferredSize = Dimension(TABLE_WIDTH, TABLE_HEIGHT)
-            minimumSize = Dimension(TABLE_WIDTH, TABLE_HEIGHT)
-            maximumSize = Dimension(TABLE_WIDTH, TABLE_HEIGHT)
+            // 高度固定 200；宽度只设最小/理想值，随设置窗口伸缩（比例列宽见 ModelTable.doLayout）
+            minimumSize = Dimension(TABLE_MIN_WIDTH, TABLE_HEIGHT)
+            preferredSize = Dimension(TABLE_DEFAULT_WIDTH, TABLE_HEIGHT)
+            maximumSize = Dimension(Int.MAX_VALUE, TABLE_HEIGHT)
             horizontalScrollBarPolicy = JScrollPane.HORIZONTAL_SCROLLBAR_AS_NEEDED
             verticalScrollBarPolicy = JScrollPane.VERTICAL_SCROLLBAR_AS_NEEDED
         }
@@ -349,6 +379,14 @@ class SettingsConfigurable : Configurable {
         col.preferredWidth = width
     }
 
+    /** 数据列：只设最小宽与理想宽（上不封顶），实际列宽由 ModelTable 按窗口宽度比例分配 */
+    private fun configureModelColumn(column: Int, minWidth: Int, preferredWidth: Int) {
+        val col = table.columnModel.getColumn(column)
+        col.minWidth = minWidth
+        col.maxWidth = Int.MAX_VALUE
+        col.preferredWidth = preferredWidth
+    }
+
     /** 弹出添加模型对话框（先在提供商信息区选择/维护提供商，再批量勾选要添加的模型） */
     private fun showAddProviderDialog() {
         val dialog = AddProviderDialog(
@@ -356,6 +394,7 @@ class SettingsConfigurable : Configurable {
             ModelUniqueness.keysOf(workingProviders),
             workingProviders,
             workingUserProviders,
+            workingApiKeys,
         )
         if (dialog.showAndGet()) {
             // 1) 删除的提供商：级联移除其全部模型条目
@@ -363,13 +402,11 @@ class SettingsConfigurable : Configurable {
                 workingProviders.removeAll { it.providerId == removedId }
             }
             // 2) 编辑的提供商：级联更新其模型条目的显示名与 baseUrl
+            //    （按条目自身类型匹配档案中对应类型的 baseUrl，仅更新被编辑类型的条目）
             dialog.resultEditedProviders.forEach { (providerId, updated) ->
-                val updatedBaseUrl = updated.plans.firstOrNull()?.baseUrl
-                workingProviders.filter { it.providerId == providerId }.forEach {
-                    it.displayName = updated.displayName
-                    if (updatedBaseUrl != null) {
-                        it.baseUrl = updatedBaseUrl
-                    }
+                workingProviders.filter { it.providerId == providerId }.forEach { entry ->
+                    entry.displayName = updated.displayName
+                    updated.plans.firstOrNull { it.type == entry.planType }?.baseUrl?.let { entry.baseUrl = it }
                 }
             }
             // 3) 提供商档案整体替换
@@ -379,17 +416,16 @@ class SettingsConfigurable : Configurable {
             // 4) 新增模型条目
             val configs = dialog.resultConfigs
             if (configs.isNotEmpty()) {
-                configs.forEach { config ->
-                    workingProviders.add(config)
-                    if (dialog.apiKey.isNotBlank()) {
-                        workingApiKeys[config.providerId] = dialog.apiKey
-                    }
-                }
+                configs.forEach { config -> workingProviders.add(config) }
                 if (workingActiveId.isBlank()) {
                     workingActiveId = configs.first().id
                 }
             }
-            // 5) 激活条目被级联删除后回退到第一个条目
+            // 5) API Key 按提供商分别写回（blank 规约为 null；值为原值时是无操作）
+            dialog.resultApiKeys.forEach { (providerId, key) ->
+                workingApiKeys[providerId] = key?.takeIf { it.isNotBlank() }
+            }
+            // 6) 激活条目被级联删除后回退到第一个条目
             if (workingActiveId.isNotBlank() && workingProviders.none { it.id == workingActiveId }) {
                 workingActiveId = workingProviders.firstOrNull()?.id ?: ""
             }
@@ -406,9 +442,8 @@ class SettingsConfigurable : Configurable {
             if (idx >= 0) {
                 workingProviders[idx] = updated
             }
-            if (dialog.resultApiKey?.isNotBlank() == true) {
-                workingApiKeys[updated.providerId] = dialog.resultApiKey
-            }
+            // API Key 按提供商写回：清空输入即清除该提供商保存的 Key（与 setApiKey 语义一致）
+            workingApiKeys[updated.providerId] = dialog.resultApiKey?.takeIf { it.isNotBlank() }
             refreshTable()
         }
     }
@@ -471,21 +506,19 @@ class SettingsConfigurable : Configurable {
         private val existingKeys: Set<String>,
         private val existingProviders: List<AiProviderConfig>,
         initialUserProviders: List<UserProvider>,
+        private val initialApiKeys: Map<String, String?>,
     ) : DialogWrapper(parent, true) {
 
         // ---- 提供商信息区 ----
-        private val providerCombo = JComboBox<ProviderOption>().apply {
+        // 选择提供商：一条记录一个类型，名称右侧以标签标注类型（见 ProviderOptionRenderer）；
+        // 类型并入提供商选择，不再单独提供「类型」下拉
+        private val providerCombo = JComboBox<ProviderComboOption>().apply {
             renderer = ProviderOptionRenderer()
-            minimumSize = Dimension(200, 30)
+            minimumSize = Dimension(240, 30)
             addActionListener { onProviderSelected() }
         }
         private val providerValueLabel = JBLabel("").apply {
             minimumSize = Dimension(200, preferredSize.height)
-        }
-        private val planTypeCombo = JComboBox<ProviderPlanType>().apply {
-            renderer = PlanRenderer()
-            minimumSize = Dimension(140, 30)
-            addActionListener { onPlanTypeChanged() }
         }
         private val baseUrlValueLabel = JBLabel("").apply {
             minimumSize = Dimension(200, preferredSize.height)
@@ -544,9 +577,15 @@ class SettingsConfigurable : Configurable {
         /** 本次对话框内被编辑的提供商（providerId → 新档案，其模型条目由设置页在 OK 后级联更新） */
         private val editedProviders = linkedMapOf<String, UserProvider>()
 
+        /** 本次对话框内各提供商的 API Key 编辑副本（切换提供商时暂存；OK 后由设置页写回工作副本） */
+        private val editedKeys = mutableMapOf<String, String?>()
+
+        /** 当前选中的提供商 id（用于切换时暂存上一个提供商的 Key 输入） */
+        private var selectedProviderId: String? = null
+
         var resultConfigs: List<AiProviderConfig> = emptyList()
             private set
-        var apiKey: String = ""
+        var resultApiKeys: Map<String, String?> = emptyMap()
             private set
         var resultProviders: List<UserProvider> = emptyList()
             private set
@@ -584,14 +623,26 @@ class SettingsConfigurable : Configurable {
             val hintLabel = JBLabel(CodeSenseBundle.message("settings.addProvider.hint")).apply {
                 foreground = JBColor.GRAY
                 font = font.deriveFont(Font.PLAIN, 12f)
-                border = JBUI.Borders.empty(0, 0, 8, 0)
+                border = JBUI.Borders.empty(0, 0, 4, 0)
             }
 
-            // 提供商操作按钮行：新增 / 编辑 / 删除（删除仅对自定义提供商开放）；间距 10px 避免图标按钮过于紧凑
-            val providerActions = JPanel(FlowLayout(FlowLayout.LEFT, 10, 0)).apply {
-                add(addProviderButton)
-                add(editProviderButton)
-                add(deleteProviderButton)
+            // 提供商操作按钮行：新增 / 编辑 / 删除（删除仅对自定义提供商开放）；
+            // 用 GridBagLayout + weighty=1.0 撑满行高，默认 CENTER 锚点使图标按钮与下拉框垂直居中对齐。
+            val providerActions = JPanel(GridBagLayout()).apply {
+                val first = GridBagConstraints().apply {
+                    weighty = 1.0
+                    insets = JBUI.insets(0, 10, 0, 10)   // 首按钮保留 10px 左间距，与旧 FlowLayout 视效一致
+                }
+                val rest = GridBagConstraints().apply {
+                    weighty = 1.0
+                    insets = JBUI.insets(0, 0, 0, 10)    // 按钮间距 10px，避免图标按钮过于紧凑
+                }
+                add(addProviderButton, first)
+                rest.gridx = 1
+                add(editProviderButton, rest)
+                rest.gridx = 2
+                rest.insets = JBUI.insets(0)
+                add(deleteProviderButton, rest)
             }
             val providerRow = JPanel(BorderLayout(4, 0)).apply {
                 add(providerCombo, BorderLayout.CENTER)
@@ -625,9 +676,6 @@ class SettingsConfigurable : Configurable {
             val providerLabel = JLabel(CodeSenseBundle.message("settings.provider")).apply {
                 minimumSize = preferredSize
             }
-            val planTypeLabel = JLabel(CodeSenseBundle.message("settings.planType")).apply {
-                minimumSize = preferredSize
-            }
             val baseUrlLabel = JLabel(CodeSenseBundle.message("settings.baseUrl")).apply {
                 minimumSize = preferredSize
             }
@@ -645,17 +693,15 @@ class SettingsConfigurable : Configurable {
                 foreground = JBColor.GRAY
             }
 
-            // 提供商信息（选择/维护提供商 + 只读展示 + API Key）→ 选择模型（勾选/获取/手动添加）
+            // 提供商信息（选择/维护提供商 + 只读展示 + API Key）→ 选择模型（勾选/获取/手动添加）。
+            // 提示小字放在「选择提供商：」下拉框下方，左缘与下拉框对齐。
             return FormBuilder.createFormBuilder()
-                .addComponent(hintLabel)
-                .addVerticalGap(2)
                 .addComponent(providerSectionCaption)
                 .addVerticalGap(4)
                 .addLabeledComponent(templateLabel, providerRow)
+                .addComponentToRightColumn(hintLabel)
                 .addVerticalGap(6)
                 .addLabeledComponent(providerLabel, providerValueLabel)
-                .addVerticalGap(6)
-                .addLabeledComponent(planTypeLabel, planTypeCombo)
                 .addVerticalGap(6)
                 .addLabeledComponent(baseUrlLabel, baseUrlValueLabel)
                 .addVerticalGap(6)
@@ -689,20 +735,32 @@ class SettingsConfigurable : Configurable {
             return south
         }
 
-        /** 选中提供商变化：刷新只读展示、类型可选范围与按钮可用态，并清空模型列表 */
+        /** 选中提供商变化：刷新只读展示、按钮可用态、API Key 预填，并清空模型列表 */
         private fun onProviderSelected() {
             if (isLoading) return
             val option = selectedOption() ?: return
+            // 切换提供商前，把当前输入暂存到上一个提供商的编辑副本
+            // （同一提供商的多条类型记录共享 providerId，互相切换不视为切换提供商，保留当前输入）
+            val prevId = selectedProviderId
+            val providerChanged = prevId != option.providerId
+            if (providerChanged && prevId != null) {
+                editedKeys[prevId] = String(apiKeyField.password)
+            }
+            selectedProviderId = option.providerId
             isLoading = true
             try {
                 providerValueLabel.text = option.displayName
-                // 类型下拉按统一顺序展示：按量付费 → Token Plan → Coding Plan
-                val planTypes = option.plans.map { it.type }.distinct()
-                    .sortedBy { ProviderPlanType.DISPLAY_ORDER.indexOf(it) }
-                val current = planTypeCombo.selectedItem as? ProviderPlanType
-                planTypeCombo.model = DefaultComboBoxModel(planTypes.toTypedArray())
-                planTypeCombo.selectedItem = if (planTypes.contains(current)) current else planTypes.firstOrNull()
-                refreshBaseUrlLabel()
+                // 仅真正切换提供商时预填 Key：已编辑值优先，其次设置页工作副本，末尾回退 PasswordSafe
+                // （回退覆盖「曾删光某提供商模型但保留 Key」的场景，见 removeProvider 不删 Key 的约定）；
+                // 同一提供商被重新选中（如提供商编辑器重建下拉）时保留用户当前输入
+                if (providerChanged) {
+                    val newKey = editedKeys[option.providerId]
+                        ?: initialApiKeys[option.providerId]
+                        ?: AppSettings.getApiKey(option.providerId)
+                    apiKeyField.text = newKey ?: ""
+                }
+                // 每条记录一个类型：接口地址只读展示直接取选项
+                baseUrlValueLabel.text = option.baseUrl
                 editProviderButton.isEnabled = option.isCustom
                 deleteProviderButton.isEnabled = option.isCustom
                 // 删除按钮提示随选中项变化：自定义可删 / 预设仅提示限制
@@ -719,32 +777,31 @@ class SettingsConfigurable : Configurable {
             }
         }
 
-        /** 切换类型：接口地址只读展示跟随（提供商档案内的 plans 决定） */
-        private fun onPlanTypeChanged() {
-            if (isLoading) return
-            refreshBaseUrlLabel()
-        }
-
-        /** 依据当前选中的类型刷新接口地址只读展示 */
-        private fun refreshBaseUrlLabel() {
-            val option = selectedOption() ?: return
-            val planType = planTypeCombo.selectedItem as? ProviderPlanType ?: return
-            baseUrlValueLabel.text = option.baseUrlOf(planType)
-        }
-
-        /** 重建提供商下拉（预设 + 自定义档案），可指定选中项 id */
-        private fun rebuildProviderCombo(selectId: String? = null) {
+        /**
+         * 重建提供商下拉（预设 + 自定义档案）。
+         * 每个「提供商 × 类型」为一条记录（见 [ProviderComboOptions]），
+         * 名称相同、名称右侧以标签标注类型；[selectId] 指定选中提供商 id，
+         * [selectType] 额外限定其类型记录（同名多条记录时优先匹配类型）。
+         */
+        private fun rebuildProviderCombo(selectId: String? = null, selectType: ProviderPlanType? = null) {
             isLoading = true
             try {
                 providerCombo.removeAllItems()
                 ProviderPresets.ALL.forEach { p ->
-                    providerCombo.addItem(ProviderOption(p.id, p.displayName, p.plans, isCustom = false))
+                    ProviderComboOptions.of(p.id, p.displayName, p.plans, isCustom = false)
+                        .forEach { providerCombo.addItem(it) }
                 }
                 workingUserProviders.forEach { p ->
-                    providerCombo.addItem(ProviderOption(p.id, p.displayName, p.plans, isCustom = true))
+                    ProviderComboOptions.of(p.id, p.displayName, p.plans, isCustom = true)
+                        .forEach { providerCombo.addItem(it) }
                 }
                 val index = selectId?.let { id ->
-                    (0 until providerCombo.itemCount).firstOrNull { providerCombo.getItemAt(it).id == id }
+                    (0 until providerCombo.itemCount).firstOrNull {
+                        val o = providerCombo.getItemAt(it)
+                        o.providerId == id && (selectType == null || o.type == selectType)
+                    } ?: (0 until providerCombo.itemCount).firstOrNull {
+                        providerCombo.getItemAt(it).providerId == id
+                    }
                 }
                 providerCombo.selectedIndex = index ?: 0
             } finally {
@@ -753,20 +810,24 @@ class SettingsConfigurable : Configurable {
             onProviderSelected()
         }
 
-        private fun selectedOption(): ProviderOption? = providerCombo.selectedItem as? ProviderOption
+        private fun selectedOption(): ProviderComboOption? = providerCombo.selectedItem as? ProviderComboOption
 
         /** 选中的自定义提供商档案；选中预设时返回 null */
         private fun selectedCustomProvider(): UserProvider? {
             val option = selectedOption() ?: return null
             if (!option.isCustom) return null
-            return workingUserProviders.firstOrNull { it.id == option.id }
+            return workingUserProviders.firstOrNull { it.id == option.providerId }
         }
 
         /** 打开提供商编辑器：existing=null 新建，否则编辑该自定义提供商 */
         private fun showProviderEditor(existing: UserProvider?) {
-            val takenNames = ProviderPresets.ALL.map { it.displayName } +
-                workingUserProviders.filter { it.id != existing?.id }.map { it.displayName }
-            val dialog = ProviderEditorDialog(contentPanel, existing, takenNames.toSet())
+            // 名称唯一性按「(类型, 名称)」组合判定：同名不同类型允许（多类型应建多条记录），同名同类型禁止
+            val takenPairs = ProviderPresets.ALL.flatMap { p ->
+                p.plans.map { it.type to p.displayName }
+            } + workingUserProviders.filter { it.id != existing?.id }.flatMap { p ->
+                p.plans.map { it.type to p.displayName }
+            }
+            val dialog = ProviderEditorDialog(contentPanel, existing, takenPairs.toSet())
             if (dialog.showAndGet()) {
                 val result = dialog.resultProvider ?: return
                 if (existing == null) {
@@ -778,7 +839,7 @@ class SettingsConfigurable : Configurable {
                     }
                     editedProviders[result.id] = result
                 }
-                rebuildProviderCombo(selectId = result.id)
+                rebuildProviderCombo(selectId = result.id, selectType = result.plans.firstOrNull()?.type)
             }
         }
 
@@ -835,8 +896,7 @@ class SettingsConfigurable : Configurable {
         /** 测试当前配置的连通性（后台发一条最小请求，模型取第一个已勾选项，未勾选时取列表第一项） */
         private fun testConnection() {
             val option = selectedOption() ?: return
-            val planType = planTypeCombo.selectedItem as? ProviderPlanType ?: return
-            val baseUrl = option.baseUrlOf(planType)
+            val baseUrl = option.baseUrl
             if (baseUrl.isEmpty()) {
                 Messages.showWarningDialog(
                     contentPanel,
@@ -915,8 +975,7 @@ class SettingsConfigurable : Configurable {
         /** 通过 API（GET {baseUrl}/models）获取模型列表 */
         private fun fetchModels() {
             val option = selectedOption() ?: return
-            val planType = planTypeCombo.selectedItem as? ProviderPlanType ?: return
-            val baseUrl = option.baseUrlOf(planType)
+            val baseUrl = option.baseUrl
             if (baseUrl.isEmpty()) {
                 Messages.showWarningDialog(
                     contentPanel,
@@ -970,8 +1029,9 @@ class SettingsConfigurable : Configurable {
 
         override fun doOKAction() {
             val option = selectedOption() ?: return
-            val planType = planTypeCombo.selectedItem as? ProviderPlanType ?: ProviderPlanType.PAY_AS_YOU_GO
-            val baseUrl = option.baseUrlOf(planType)
+            // 每条记录一个类型：类型与接口地址直接取选中选项
+            val planType = option.type
+            val baseUrl = option.baseUrl
             if (baseUrl.isEmpty()) {
                 Messages.showWarningDialog(
                     contentPanel,
@@ -1007,11 +1067,11 @@ class SettingsConfigurable : Configurable {
             } else {
                 val seen = mutableSetOf<String>()
                 resultConfigs = uniques.map { m ->
-                    var id = "${option.id}:$m"
-                    if (!seen.add(id)) id = "${option.id}:$m:${UUID.randomUUID()}"
+                    var id = "${option.providerId}:$m"
+                    if (!seen.add(id)) id = "${option.providerId}:$m:${UUID.randomUUID()}"
                     AiProviderConfig(
                         id = id,
-                        providerId = option.id,
+                        providerId = option.providerId,
                         displayName = option.displayName,
                         planType = planType,
                         baseUrl = baseUrl,
@@ -1019,7 +1079,9 @@ class SettingsConfigurable : Configurable {
                     )
                 }
             }
-            apiKey = String(apiKeyField.password)
+            // 确定时把当前提供商的 Key 输入存入编辑副本，随其余副本一并返回（按提供商分别写回）
+            editedKeys[option.providerId] = String(apiKeyField.password)
+            resultApiKeys = editedKeys.toMap()
             resultProviders = workingUserProviders.map { it.copy(plans = it.plans.toMutableList()) }
             resultRemovedProviderIds = removedProviderIds.toSet()
             resultEditedProviders = editedProviders.toMap()
@@ -1027,25 +1089,15 @@ class SettingsConfigurable : Configurable {
         }
     }
 
-    /** 选择提供商下拉条目：预设或用户自定义（统一建模） */
-    private data class ProviderOption(
-        val id: String,
-        val displayName: String,
-        val plans: List<PlanPreset>,
-        val isCustom: Boolean,
-    ) {
-        /** 某类型对应的 baseUrl；未声明时返回空串 */
-        fun baseUrlOf(type: ProviderPlanType): String = plans.firstOrNull { it.type == type }?.baseUrl ?: ""
-    }
-
     /**
      * 提供商编辑器：新增/编辑用户自定义提供商（名称 + 类型 + 接口地址）。
      * 预设提供商不可编辑（不可进入本对话框）。
+     * 名称唯一性按「(类型, 名称)」组合判定：同名不同类型允许（多类型应建多条记录），同名同类型禁止。
      */
     private class ProviderEditorDialog(
         parent: JComponent,
         private val existing: UserProvider?,
-        private val takenNames: Set<String>,
+        private val takenPairs: Set<Pair<ProviderPlanType, String>>,
     ) : DialogWrapper(parent, true) {
 
         private val dialogTitle = CodeSenseBundle.message(
@@ -1134,10 +1186,14 @@ class SettingsConfigurable : Configurable {
                 return
             }
             val planType = planTypeCombo.selectedItem as? ProviderPlanType ?: ProviderPlanType.PAY_AS_YOU_GO
-            if (name in takenNames) {
+            if (planType to name in takenPairs) {
                 Messages.showWarningDialog(
                     contentPanel,
-                    CodeSenseBundle.message("settings.addProvider.providerName.duplicate"),
+                    CodeSenseBundle.message(
+                        "settings.addProvider.providerName.duplicate",
+                        name,
+                        planTypeLabel(planType),
+                    ),
                     dialogTitle,
                 )
                 return
@@ -1284,29 +1340,6 @@ class SettingsConfigurable : Configurable {
             }
             hideInlineInput()
             rebuildChips()
-        }
-
-        /** Chip 圆角边框（样式见 [TagChipStyle]） */
-        private class ChipBorder : javax.swing.border.AbstractBorder() {
-            override fun paintBorder(
-                c: Component?, g: java.awt.Graphics?,
-                x: Int, y: Int, width: Int, height: Int,
-            ) {
-                val g2 = g as java.awt.Graphics2D
-                g2.setRenderingHint(
-                    java.awt.RenderingHints.KEY_ANTIALIASING,
-                    java.awt.RenderingHints.VALUE_ANTIALIAS_ON,
-                )
-                // 灰色填充背景
-                g2.color = TagChipStyle.background
-                g2.fillRoundRect(x, y, width - 1, height - 1, TagChipStyle.ARC, TagChipStyle.ARC)
-                // 边框线
-                g2.color = JBColor.border()
-                g2.drawRoundRect(x, y, width - 1, height - 1, TagChipStyle.ARC, TagChipStyle.ARC)
-            }
-
-            override fun getBorderInsets(c: Component?) =
-                JBUI.insets(TagChipStyle.V_PAD, TagChipStyle.H_PAD, TagChipStyle.V_PAD, TagChipStyle.H_PAD)
         }
     }
 
@@ -1708,6 +1741,58 @@ class SettingsConfigurable : Configurable {
             }
             return super.getToolTipText(e)
         }
+
+        /**
+         * 按窗口宽度比例分配列宽：以各列理想宽（preferred）为权重分配可视宽度，
+         * 逐列钳制在 [minWidth, maxWidth]（操作列 min==max，天然保持固定），余量多轮再分配。
+         * 用户正在手动拖表头列宽时（resizingColumn 非空）不干预；
+         * 随后沿用 JBTable 的 doLayout（JTable.doLayout + busy-icon 定位，AUTO_RESIZE_OFF 下不改列宽）。
+         */
+        override fun doLayout() {
+            if (tableHeader == null || tableHeader.resizingColumn == null) {
+                resizeColumnsProportionally()
+            }
+            super.doLayout()
+        }
+
+        private fun resizeColumnsProportionally() {
+            val cm = columnModel ?: return
+            val n = cm.columnCount
+            val available = width - (insets.left + insets.right)
+            if (n == 0 || available <= 0) return
+            val prefSum = (0 until n).sumOf { cm.getColumn(it).preferredWidth.toLong() }.takeIf { it > 0 } ?: 1L
+            val targets = IntArray(n)
+            var used = 0L
+            for (i in 0 until n) {
+                val col = cm.getColumn(i)
+                val target = (available.toLong() * col.preferredWidth / prefSum).toInt()
+                targets[i] = target.coerceIn(col.minWidth, col.maxWidth)
+                used += targets[i]
+            }
+            // 钳制造成的差额按各列富余量多轮兜底再分配，保证总和贴合表格宽度
+            var diff = available.toLong() - used
+            var changed = true
+            while (diff != 0L && changed) {
+                changed = false
+                for (i in 0 until n) {
+                    if (diff == 0L) break
+                    val col = cm.getColumn(i)
+                    val step = if (diff > 0) {
+                        minOf((col.maxWidth - targets[i]).toLong(), diff)
+                    } else {
+                        minOf((targets[i] - col.minWidth).toLong(), -diff)
+                    }
+                    if (step > 0) {
+                        targets[i] = (targets[i].toLong() + step).toInt()
+                        diff -= step
+                        changed = true
+                    }
+                }
+            }
+            for (i in 0 until n) {
+                cm.getColumn(i).width = targets[i]
+            }
+        }
     }
 
     // ---- 数据列渲染器（hover 高亮） ----
@@ -1927,28 +2012,76 @@ class SettingsConfigurable : Configurable {
         }
     }
 
-    /** 选择提供商下拉渲染器（自定义提供商带「（自定义）」标记） */
+    /**
+     * 选择提供商下拉渲染器：名称（自定义带「（自定义）」标记）+ 名称右侧类型标签 chip。
+     * 一条记录一个类型，与「类型并入提供商选择」的规则一致；交互配色随选中态切换。
+     */
     private class ProviderOptionRenderer : ListCellRenderer<Any?> {
-        private val delegate = JLabel()
+        private val item = ProviderOptionItem()
+
         override fun getListCellRendererComponent(
             list: javax.swing.JList<out Any?>, value: Any?, index: Int,
             isSelected: Boolean, cellHasFocus: Boolean,
         ): Component {
-            val option = value as? ProviderOption
-            delegate.text = when {
-                option == null -> value.toString()
-                option.isCustom -> "${option.displayName}（自定义）"
-                else -> option.displayName
+            val option = value as? ProviderComboOption
+            if (option != null) {
+                val name = if (option.isCustom) "${option.displayName}（自定义）" else option.displayName
+                item.setContent(name, planTypeLabel(option.type), option.baseUrl)
+            } else {
+                item.setContent(value?.toString() ?: "", "", "")
             }
             if (isSelected) {
-                delegate.background = list.selectionBackground
-                delegate.foreground = list.selectionForeground
+                item.setColors(
+                    list.selectionBackground,
+                    list.selectionForeground,
+                )
             } else {
-                delegate.background = list.background
-                delegate.foreground = list.foreground
+                item.setColors(
+                    list.background,
+                    list.foreground,
+                )
             }
-            delegate.isOpaque = true
-            return delegate
+            return item
+        }
+    }
+
+    /** 提供商下拉条目组件：名称标签 + 类型 chip（chip 隐藏时仅显示名称） */
+    private class ProviderOptionItem : JPanel(FlowLayout(FlowLayout.LEFT, 6, 0)) {
+        private val nameLabel = JLabel()
+        private val typeLabel = JLabel().apply {
+            // 与表格标签 chip 字号保持一致；渲染器组件不在组件层级树中，font 可能为空需安全回退
+            font = (font ?: java.awt.Font(java.awt.Font.SANS_SERIF, java.awt.Font.PLAIN, 12)).deriveFont(11f)
+        }
+        private val typeChip = JPanel(FlowLayout(FlowLayout.LEFT, 0, 0)).apply {
+            isOpaque = false
+            border = ChipBorder()
+            add(typeLabel)
+        }
+
+        init {
+            border = JBUI.Borders.empty(1, 0)
+            add(nameLabel)
+            add(typeChip)
+            typeChip.isVisible = false
+        }
+
+        fun setContent(name: String, typeText: String, baseUrl: String) {
+            nameLabel.text = name
+            typeLabel.text = typeText
+            typeChip.isVisible = typeText.isNotEmpty()
+            // 名称或标签被裁切时，tooltip 展示完整内容（含接口地址）
+            toolTipText = if (typeText.isEmpty()) {
+                name
+            } else {
+                if (baseUrl.isNotEmpty()) "$name（$typeText）\n$baseUrl" else "$name（$typeText）"
+            }
+        }
+
+        fun setColors(background: java.awt.Color, foreground: java.awt.Color) {
+            this.background = background
+            isOpaque = true
+            nameLabel.foreground = foreground
+            typeLabel.foreground = foreground
         }
     }
 
@@ -1959,15 +2092,20 @@ class SettingsConfigurable : Configurable {
         private const val ACTION_GAP = 8
         private const val ACTION_ICON_W = 26
 
-        // 列固定宽度
-        private const val COL_MODEL_W = 200
-        private const val COL_TYPE_W = 100
-        private const val COL_TAGS_W = 140
-        private const val COL_PROVIDER_W = 130
-        private const val COL_ACTION_W = 68
+        // 列宽：数据列按「最小宽 + 理想宽（比例权重）」配置，实际宽度由 ModelTable 按窗口宽度分配
+        private const val COL_MODEL_W = 190           // 模型列理想宽
+        private const val COL_MODEL_MIN = 140
+        private const val COL_TYPE_W = 100            // 类型列理想宽
+        private const val COL_TYPE_MIN = 80
+        private const val COL_TAGS_W = 240            // 标签列理想宽（承载 chip 标签，比原来更宽）
+        private const val COL_TAGS_MIN = 150
+        private const val COL_PROVIDER_W = 130        // 供应商列理想宽
+        private const val COL_PROVIDER_MIN = 100
+        private const val COL_ACTION_W = 68           // 操作列固定宽（min=max）
 
-        // 表格固定尺寸
-        private const val TABLE_WIDTH = 638
+        // 表格尺寸：高度固定，宽度随设置窗口伸缩（最小 ≈ 各列最小宽之和 + 余量）
+        private const val TABLE_MIN_WIDTH = 560
+        private const val TABLE_DEFAULT_WIDTH = 680
         private const val TABLE_HEIGHT = 200
 
         /** 打开设置页（供外部跳转） */
