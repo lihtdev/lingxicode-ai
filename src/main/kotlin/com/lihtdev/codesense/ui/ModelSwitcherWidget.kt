@@ -49,7 +49,7 @@ class ModelSwitcherWidget(private val project: Project) : StatusBarWidget {
     private fun currentTooltip(): String {
         val provider = AppSettings.instance.activeProvider()
         return if (provider != null) {
-            "${provider.displayName} / ${provider.modelDisplayName.ifBlank { provider.model }}"
+            "${provider.displayName} / ${provider.model}"
         } else {
             CodeSenseBundle.message("statusbar.modelSwitcher.noProvider")
         }

@@ -80,7 +80,7 @@ private fun planTypeLabel(type: ProviderPlanType): String = when (type) {
 /**
  * 设置页（Tools → CodeSense AI）。
  *
- * 布局：顶部品牌区 → 模型表格（显示名称/模型/标签/供应商/类型/操作）→ 底部全局设置。
+ * 布局：顶部品牌区 → 模型表格（模型/标签/供应商/类型/操作）→ 底部全局设置。
  * 编辑、删除、启用停用均在表格操作列完成；添加经「添加模型」弹窗批量选择。
  */
 class SettingsConfigurable : Configurable {
@@ -120,18 +120,16 @@ class SettingsConfigurable : Configurable {
         table.tableHeader.reorderingAllowed = false
         table.autoResizeMode = JTable.AUTO_RESIZE_OFF
         table.fillsViewportHeight = true
-        setFixedColumnWidth(0, COL_DISPLAY_NAME_W)
-        setFixedColumnWidth(1, COL_MODEL_W)
+        setFixedColumnWidth(0, COL_MODEL_W)
         setFixedColumnWidth(TAGS_COLUMN, COL_TAGS_W)
-        setFixedColumnWidth(3, COL_PROVIDER_W)
+        setFixedColumnWidth(2, COL_PROVIDER_W)
         setFixedColumnWidth(TYPE_COLUMN, COL_TYPE_W)
         setFixedColumnWidth(ACTION_COLUMN, COL_ACTION_W)
         // 数据列：停用行灰色 + hover 高亮（标签列改用 chip 渲染器）
         val dataRenderer = GrayRowRenderer(tableModel)
         table.columnModel.getColumn(0).cellRenderer = dataRenderer
-        table.columnModel.getColumn(1).cellRenderer = dataRenderer
         table.columnModel.getColumn(TAGS_COLUMN).cellRenderer = tagsRenderer
-        table.columnModel.getColumn(3).cellRenderer = dataRenderer
+        table.columnModel.getColumn(2).cellRenderer = dataRenderer
         table.columnModel.getColumn(TYPE_COLUMN).cellRenderer = dataRenderer
         // 操作列：图标按钮
         table.columnModel.getColumn(ACTION_COLUMN).cellRenderer = actionRenderer
@@ -394,10 +392,10 @@ class SettingsConfigurable : Configurable {
      * 平台 2024.2 的 Messages 无 Component 父窗口重载，传 null Project 会以当前窗口为父。
      */
     private fun confirmRemoveProvider(config: AiProviderConfig): Boolean {
-        val displayName = config.modelDisplayName.ifBlank { config.model }
+        val modelName = config.model
         val result = Messages.showYesNoDialog(
             null as Project?,
-            CodeSenseBundle.message("settings.deleteProvider.confirm", displayName),
+            CodeSenseBundle.message("settings.deleteProvider.confirm", modelName),
             CodeSenseBundle.message("settings.deleteProvider.confirm.title"),
             CodeSenseBundle.message("settings.deleteProvider.confirm.ok"),
             CodeSenseBundle.message("settings.deleteProvider.confirm.cancel"),
@@ -1042,7 +1040,7 @@ class SettingsConfigurable : Configurable {
     // ---- 编辑模型对话框 ----
 
     /**
-     * 编辑模型对话框：针对单个模型条目修改显示名称/模型/标签/提供商/套餐/baseUrl/apiKey/启用态。
+     * 编辑模型对话框：针对单个模型条目修改模型/标签/提供商/套餐/baseUrl/apiKey/启用态。
      */
     private class EditProviderDialog(
         parent: JComponent,
@@ -1051,9 +1049,6 @@ class SettingsConfigurable : Configurable {
         private val existingProviders: List<AiProviderConfig>,
     ) : DialogWrapper(parent, true) {
 
-        private val modelDisplayNameField = JTextField(30).apply {
-            minimumSize = Dimension(200, 30)
-        }
         private val modelCombo = JComboBox<String>().apply {
             isEditable = true
             minimumSize = Dimension(200, 30)
@@ -1126,9 +1121,6 @@ class SettingsConfigurable : Configurable {
             }
 
             // 表单标签（设置最小宽度，避免窗口缩小时文字被挤压）
-            val displayNameLabel = JLabel(CodeSenseBundle.message("settings.editProvider.displayName")).apply {
-                minimumSize = preferredSize
-            }
             val modelLabel = JLabel(SettingsConfigurable.requiredLabel("settings.editProvider.model")).apply {
                 minimumSize = preferredSize
             }
@@ -1149,8 +1141,6 @@ class SettingsConfigurable : Configurable {
             }
 
             return FormBuilder.createFormBuilder()
-                .addLabeledComponent(displayNameLabel, modelDisplayNameField)
-                .addVerticalGap(6)
                 .addLabeledComponent(modelLabel, modelRow)
                 .addVerticalGap(6)
                 .addLabeledComponent(tagsLabel, tagsWithHint)
@@ -1186,7 +1176,6 @@ class SettingsConfigurable : Configurable {
         }
 
         private fun loadInitial() {
-            modelDisplayNameField.text = initialConfig.modelDisplayName
             val preset = ProviderPresets.byId(initialConfig.providerId)
             val planTypes = preset?.plans?.map { it.type }?.distinct()
                 ?: listOf(ProviderPlanType.PAY_AS_YOU_GO)
@@ -1383,7 +1372,6 @@ class SettingsConfigurable : Configurable {
             }
             val tags = tagsPanel.getTags().toMutableList()
             resultConfig = initialConfig.copy(
-                modelDisplayName = modelDisplayNameField.text.trim(),
                 model = model,
                 tags = tags,
                 displayName = providerName,
@@ -1409,27 +1397,25 @@ class SettingsConfigurable : Configurable {
 
         override fun getRowCount(): Int = providers.size
 
-        override fun getColumnCount(): Int = 6
+        override fun getColumnCount(): Int = 5
 
         override fun getColumnName(column: Int): String = when (column) {
-            0 -> CodeSenseBundle.message("settings.table.displayName")
-            1 -> CodeSenseBundle.message("settings.table.model")
-            2 -> CodeSenseBundle.message("settings.table.tags")
-            3 -> CodeSenseBundle.message("settings.table.provider")
-            4 -> CodeSenseBundle.message("settings.table.type")
-            5 -> CodeSenseBundle.message("settings.table.actions")
+            0 -> CodeSenseBundle.message("settings.table.model")
+            1 -> CodeSenseBundle.message("settings.table.tags")
+            2 -> CodeSenseBundle.message("settings.table.provider")
+            3 -> CodeSenseBundle.message("settings.table.type")
+            4 -> CodeSenseBundle.message("settings.table.actions")
             else -> ""
         }
 
         override fun getValueAt(rowIndex: Int, columnIndex: Int): Any? {
             val p = providers.getOrNull(rowIndex) ?: return null
             return when (columnIndex) {
-                0 -> p.modelDisplayName.ifBlank { p.model }
-                1 -> p.model
-                2 -> p
-                3 -> p.displayName
-                4 -> planTypeLabel(p.planType)
-                5 -> p
+                0 -> p.model
+                1 -> p
+                2 -> p.displayName
+                3 -> planTypeLabel(p.planType)
+                4 -> p
                 else -> null
             }
         }
@@ -1755,14 +1741,13 @@ class SettingsConfigurable : Configurable {
     }
 
     companion object {
-        private const val TAGS_COLUMN = 2
-        private const val TYPE_COLUMN = 4
-        private const val ACTION_COLUMN = 5
+        private const val TAGS_COLUMN = 1
+        private const val TYPE_COLUMN = 3
+        private const val ACTION_COLUMN = 4
         private const val ACTION_GAP = 4
         private const val ACTION_ICON_W = 26
 
         // 列固定宽度
-        private const val COL_DISPLAY_NAME_W = 200
         private const val COL_MODEL_W = 200
         private const val COL_TYPE_W = 100
         private const val COL_TAGS_W = 140
@@ -1770,7 +1755,7 @@ class SettingsConfigurable : Configurable {
         private const val COL_ACTION_W = 100
 
         // 表格固定尺寸
-        private const val TABLE_WIDTH = 700
+        private const val TABLE_WIDTH = 670
         private const val TABLE_HEIGHT = 200
 
         /** 打开设置页（供外部跳转） */

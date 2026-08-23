@@ -48,9 +48,7 @@ object ModelSwitcherPopup {
         data class Model(
             val id: String,
             val providerId: String,
-            val displayName: String,
             val model: String,
-            val modelDisplayName: String,
         ) : ListEntry()
     }
 
@@ -88,14 +86,14 @@ object ModelSwitcherPopup {
         panel.add(headerBox, BorderLayout.NORTH)
 
         if (provider != null) {
-            // 当前模型信息：第一行显示名，第二行灰字「提供商 / 模型代号」
+            // 当前模型信息：第一行模型名，第二行灰字「提供商」
             val infoPanel = JPanel().apply {
                 layout = javax.swing.BoxLayout(this, javax.swing.BoxLayout.Y_AXIS)
             }
-            infoPanel.add(JBLabel(provider.modelDisplayName.ifBlank { provider.model }).apply {
+            infoPanel.add(JBLabel(provider.model).apply {
                 font = font.deriveFont(Font.PLAIN, 12f)
             })
-            infoPanel.add(JBLabel("${provider.displayName} / ${provider.model}").apply {
+            infoPanel.add(JBLabel(provider.displayName).apply {
                 font = font.deriveFont(Font.PLAIN, 11f)
                 foreground = JBColor.GRAY
                 border = JBUI.Borders.emptyTop(2)
@@ -146,8 +144,7 @@ object ModelSwitcherPopup {
             group.forEach { p ->
                 entries.add(
                     ListEntry.Model(
-                        p.id, p.providerId, p.displayName, p.model,
-                        p.modelDisplayName.ifBlank { p.model },
+                        p.id, p.providerId, p.model,
                     ),
                 )
             }
@@ -248,7 +245,7 @@ object ModelSwitcherPopup {
                 }
                 is ListEntry.Model -> {
                     val active = value.id == activeProvider?.id
-                    delegate.text = value.modelDisplayName
+                    delegate.text = value.model
                     delegate.icon = when {
                         active && isSelected -> checkIconSelected
                         active -> checkIcon
