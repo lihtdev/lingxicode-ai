@@ -68,9 +68,19 @@ private object TagChipStyle {
 }
 
 /**
+ * 套餐类型展示文案（表格「类型」列 / 类型下拉渲染器 / 重复提示共用）。
+ * 文件级私有函数，供本文件内各嵌套类直接调用。
+ */
+private fun planTypeLabel(type: ProviderPlanType): String = when (type) {
+    ProviderPlanType.TOKEN_PLAN -> CodeSenseBundle.message("provider.type.tokenPlan")
+    ProviderPlanType.CODING_PLAN -> CodeSenseBundle.message("provider.type.codingPlan")
+    ProviderPlanType.PAY_AS_YOU_GO -> CodeSenseBundle.message("provider.type.payAsYouGo")
+}
+
+/**
  * 设置页（Tools → CodeSense AI）。
  *
- * 布局：顶部品牌区 → 模型表格（显示名称/模型/标签/提供商/操作）→ 底部全局设置。
+ * 布局：顶部品牌区 → 模型表格（显示名称/模型/标签/供应商/类型/操作）→ 底部全局设置。
  * 编辑、删除、启用停用均在表格操作列完成；添加经「添加模型」弹窗批量选择。
  */
 class SettingsConfigurable : Configurable {
@@ -112,17 +122,19 @@ class SettingsConfigurable : Configurable {
         table.fillsViewportHeight = true
         setFixedColumnWidth(0, COL_DISPLAY_NAME_W)
         setFixedColumnWidth(1, COL_MODEL_W)
-        setFixedColumnWidth(2, COL_TAGS_W)
+        setFixedColumnWidth(TAGS_COLUMN, COL_TAGS_W)
         setFixedColumnWidth(3, COL_PROVIDER_W)
-        setFixedColumnWidth(4, COL_ACTION_W)
+        setFixedColumnWidth(TYPE_COLUMN, COL_TYPE_W)
+        setFixedColumnWidth(ACTION_COLUMN, COL_ACTION_W)
         // 数据列：停用行灰色 + hover 高亮（标签列改用 chip 渲染器）
         val dataRenderer = GrayRowRenderer(tableModel)
         table.columnModel.getColumn(0).cellRenderer = dataRenderer
         table.columnModel.getColumn(1).cellRenderer = dataRenderer
         table.columnModel.getColumn(TAGS_COLUMN).cellRenderer = tagsRenderer
         table.columnModel.getColumn(3).cellRenderer = dataRenderer
+        table.columnModel.getColumn(TYPE_COLUMN).cellRenderer = dataRenderer
         // 操作列：图标按钮
-        table.columnModel.getColumn(4).cellRenderer = actionRenderer
+        table.columnModel.getColumn(ACTION_COLUMN).cellRenderer = actionRenderer
         table.addMouseListener(object : MouseAdapter() {
             override fun mouseClicked(e: MouseEvent) {
                 handleTableClick(e)
@@ -334,7 +346,7 @@ class SettingsConfigurable : Configurable {
 
     /** 弹出添加模型对话框（批量勾选预设/API 获取的模型） */
     private fun showAddProviderDialog() {
-        val dialog = AddProviderDialog(mainPanel)
+        val dialog = AddProviderDialog(mainPanel, ModelUniqueness.keysOf(workingProviders))
         if (dialog.showAndGet()) {
             val configs = dialog.resultConfigs
             if (configs.isEmpty()) return
@@ -353,7 +365,7 @@ class SettingsConfigurable : Configurable {
 
     /** 编辑选中模型条目 */
     private fun editProvider(config: AiProviderConfig) {
-        val dialog = EditProviderDialog(mainPanel, config, workingApiKeys[config.providerId])
+        val dialog = EditProviderDialog(mainPanel, config, workingApiKeys[config.providerId], workingProviders)
         if (dialog.showAndGet()) {
             val updated = dialog.resultConfig ?: return
             val idx = workingProviders.indexOfFirst { it.id == config.id }
@@ -430,7 +442,10 @@ class SettingsConfigurable : Configurable {
     /**
      * 添加模型对话框：批量勾选预设模型或通过 API 获取的模型列表。
      */
-    private class AddProviderDialog(parent: JComponent) : DialogWrapper(parent, true) {
+    private class AddProviderDialog(
+        parent: JComponent,
+        private val existingKeys: Set<String>,
+    ) : DialogWrapper(parent, true) {
 
         private val presetCombo = JComboBox<ProviderPreset>().apply {
             renderer = PresetRenderer()
@@ -617,7 +632,8 @@ class SettingsConfigurable : Configurable {
                     planTypeCombo.model = DefaultComboBoxModel(planTypes)
                     planTypeCombo.selectedItem = planTypes.first()
                     baseUrlField.text = preset.plans.first().baseUrl
-                    setModelItems(preset.models, selected = true)
+                    // 不预置模型列表：模型由用户手动添加或点击「获取模型」加载（无需默认模型列表）
+                    setModelItems(emptyList(), selected = false)
                 }
             } finally {
                 isLoading = false
@@ -824,17 +840,39 @@ class SettingsConfigurable : Configurable {
             val preset = presetCombo.selectedItem as? ProviderPreset
             val providerId = if (preset != null && preset.id != "__custom__") preset.id else "custom-${UUID.randomUUID()}"
             val planType = planTypeCombo.selectedItem as? ProviderPlanType ?: ProviderPlanType.PAY_AS_YOU_GO
+            // 「供应商 + 类型 + 模型」唯一性校验：已存在的模型提示并跳过，全部重复则不关闭窗口
+            val (duplicates, uniques) = ModelUniqueness.partition(
+                existingKeys,
+                name,
+                planType,
+                selectedModels.map { it.name },
+            )
+            if (duplicates.isNotEmpty()) {
+                Messages.showWarningDialog(
+                    contentPanel,
+                    CodeSenseBundle.message(
+                        "settings.addProvider.duplicate",
+                        name,
+                        planTypeLabel(planType),
+                        duplicates.joinToString("、") { it.trim() },
+                    ),
+                    CodeSenseBundle.message("settings.addProvider.title"),
+                )
+            }
+            if (uniques.isEmpty()) {
+                return
+            }
             val seen = mutableSetOf<String>()
-            resultConfigs = selectedModels.map { m ->
-                var id = "$providerId:${m.name}"
-                if (!seen.add(id)) id = "$providerId:${m.name}:${UUID.randomUUID()}"
+            resultConfigs = uniques.map { m ->
+                var id = "$providerId:$m"
+                if (!seen.add(id)) id = "$providerId:$m:${UUID.randomUUID()}"
                 AiProviderConfig(
                     id = id,
                     providerId = providerId,
                     displayName = name,
                     planType = planType,
                     baseUrl = baseUrl,
-                    model = m.name,
+                    model = m,
                 )
             }
             apiKey = String(apiKeyField.password)
@@ -1010,6 +1048,7 @@ class SettingsConfigurable : Configurable {
         parent: JComponent,
         private val initialConfig: AiProviderConfig,
         private val initialApiKey: String?,
+        private val existingProviders: List<AiProviderConfig>,
     ) : DialogWrapper(parent, true) {
 
         private val modelDisplayNameField = JTextField(30).apply {
@@ -1154,10 +1193,12 @@ class SettingsConfigurable : Configurable {
             planTypeCombo.model = DefaultComboBoxModel(planTypes.toTypedArray())
             planTypeCombo.selectedItem = if (planTypes.contains(initialConfig.planType)) initialConfig.planType else planTypes.first()
             baseUrlField.text = initialConfig.baseUrl
-            val models = (preset?.models ?: emptyList()).toMutableSet()
-            if (initialConfig.model.isNotBlank()) models.add(initialConfig.model)
-            modelCombo.model = DefaultComboBoxModel(models.toTypedArray())
-            modelCombo.selectedItem = initialConfig.model
+            // 模型下拉初始仅含当前模型：不预置默认模型列表，用户可手动输入或点「获取模型」加载
+            val currentModel = initialConfig.model.takeIf { it.isNotBlank() }
+            modelCombo.model = DefaultComboBoxModel(
+                if (currentModel != null) arrayOf(currentModel) else emptyArray(),
+            )
+            modelCombo.selectedItem = currentModel
             tagsPanel.setTags(initialConfig.tags)
             providerNameField.text = initialConfig.displayName
             apiKeyField.text = initialApiKey ?: ""
@@ -1275,7 +1316,13 @@ class SettingsConfigurable : Configurable {
                         return
                     }
                     ApplicationManager.getApplication().invokeLater {
+                        // 加载新列表后保留用户已输入/选中的模型名：不在新列表中时编辑器仍显示该文本
+                        val previous = (modelCombo.editor.item as? String ?: "").trim()
                         modelCombo.model = DefaultComboBoxModel(models.toTypedArray())
+                        if (previous.isNotEmpty()) {
+                            modelCombo.selectedItem = previous
+                            modelCombo.editor.item = previous
+                        }
                         Messages.showInfoMessage(
                             contentPanel,
                             CodeSenseBundle.message("settings.editProvider.fetchSuccess", models.size.toString()),
@@ -1314,13 +1361,33 @@ class SettingsConfigurable : Configurable {
                 )
                 return
             }
+            val planType = planTypeCombo.selectedItem as? ProviderPlanType ?: ProviderPlanType.PAY_AS_YOU_GO
+            // 「供应商 + 类型 + 模型」唯一性校验：与其它条目重复时阻止保存
+            val duplicate = existingProviders.any {
+                it.id != initialConfig.id &&
+                    ModelUniqueness.key(it.displayName, it.planType, it.model) ==
+                    ModelUniqueness.key(providerName, planType, model)
+            }
+            if (duplicate) {
+                Messages.showWarningDialog(
+                    contentPanel,
+                    CodeSenseBundle.message(
+                        "settings.editProvider.duplicate",
+                        providerName,
+                        planTypeLabel(planType),
+                        model,
+                    ),
+                    CodeSenseBundle.message("settings.editProvider.title"),
+                )
+                return
+            }
             val tags = tagsPanel.getTags().toMutableList()
             resultConfig = initialConfig.copy(
                 modelDisplayName = modelDisplayNameField.text.trim(),
                 model = model,
                 tags = tags,
                 displayName = providerName,
-                planType = planTypeCombo.selectedItem as? ProviderPlanType ?: ProviderPlanType.PAY_AS_YOU_GO,
+                planType = planType,
                 baseUrl = baseUrl,
                 enabled = enabledCheckbox.isSelected,
             )
@@ -1342,14 +1409,15 @@ class SettingsConfigurable : Configurable {
 
         override fun getRowCount(): Int = providers.size
 
-        override fun getColumnCount(): Int = 5
+        override fun getColumnCount(): Int = 6
 
         override fun getColumnName(column: Int): String = when (column) {
             0 -> CodeSenseBundle.message("settings.table.displayName")
             1 -> CodeSenseBundle.message("settings.table.model")
             2 -> CodeSenseBundle.message("settings.table.tags")
             3 -> CodeSenseBundle.message("settings.table.provider")
-            4 -> CodeSenseBundle.message("settings.table.actions")
+            4 -> CodeSenseBundle.message("settings.table.type")
+            5 -> CodeSenseBundle.message("settings.table.actions")
             else -> ""
         }
 
@@ -1360,7 +1428,8 @@ class SettingsConfigurable : Configurable {
                 1 -> p.model
                 2 -> p
                 3 -> p.displayName
-                4 -> p
+                4 -> planTypeLabel(p.planType)
+                5 -> p
                 else -> null
             }
         }
@@ -1648,11 +1717,9 @@ class SettingsConfigurable : Configurable {
             list: javax.swing.JList<out Any?>, value: Any?, index: Int,
             isSelected: Boolean, cellHasFocus: Boolean,
         ): Component {
-            val text = when (value as? ProviderPlanType) {
-                ProviderPlanType.TOKEN_PLAN -> CodeSenseBundle.message("provider.type.tokenPlan")
-                ProviderPlanType.CODING_PLAN -> CodeSenseBundle.message("provider.type.codingPlan")
-                ProviderPlanType.PAY_AS_YOU_GO -> CodeSenseBundle.message("provider.type.payAsYouGo")
-                else -> value.toString()
+            val text = when (val type = value as? ProviderPlanType) {
+                null -> value.toString()
+                else -> planTypeLabel(type)
             }
             delegate.text = text
             if (isSelected) {
@@ -1689,19 +1756,21 @@ class SettingsConfigurable : Configurable {
 
     companion object {
         private const val TAGS_COLUMN = 2
-        private const val ACTION_COLUMN = 4
+        private const val TYPE_COLUMN = 4
+        private const val ACTION_COLUMN = 5
         private const val ACTION_GAP = 4
         private const val ACTION_ICON_W = 26
 
         // 列固定宽度
         private const val COL_DISPLAY_NAME_W = 200
         private const val COL_MODEL_W = 200
+        private const val COL_TYPE_W = 100
         private const val COL_TAGS_W = 140
         private const val COL_PROVIDER_W = 130
         private const val COL_ACTION_W = 100
 
         // 表格固定尺寸
-        private const val TABLE_WIDTH = 600
+        private const val TABLE_WIDTH = 700
         private const val TABLE_HEIGHT = 200
 
         /** 打开设置页（供外部跳转） */
