@@ -24,14 +24,16 @@ CodeSense AI 是面向 JetBrains IDE 的 AI 能力集插件。v1 交付「AI 提
 
 ```
 UI/Action 层
-  ├── GenerateCommitMessageAction（提交框按钮，v1）
-  └── CodeSenseActionGroup（编辑器右键「CodeSense AI」组，预留挂载点）
+  ├── GenerateCommitMessageAction（提交框按钮）
+  ├── ExplainCodeAction（编辑器右键「解释代码」+ 默认快捷键）
+  └── CodeSenseActionGroup（编辑器右键「CodeSense AI」组）
       ▼
 功能层（AiFeature 抽象）
-  └── CommitMessageFeature（v1）    [后续：ExplainCodeFeature 等]
+  ├── CommitMessageFeature（提交信息生成）
+  └── ExplainCodeFeature（代码解释：Markdown 结构 → 非模态对话框展示）
       ▼
 执行层（AiInvocationService + Task.Backgroundable）
-  │ 组 prompt（读动作）→ AiClient → 清洗 → invokeLater 回调
+  │ 组 prompt（读动作）→ AiClient(带 maxTokens) → 特征化清洗 → invokeLater 回调
       ▼
 AI 层（OpenAiCompatClient：POST {baseUrl}/chat/completions）
       ▼
@@ -44,12 +46,14 @@ AI 层（OpenAiCompatClient：POST {baseUrl}/chat/completions）
 interface AiFeature {
     val id: String
     val displayName: String
+    val maxOutputTokens: Int                                    // 默认 256；解释等长文本覆写
     fun buildPrompt(context: Any, settings: AppSettingsState): List<ChatMessage>  // 后台线程
-    fun handleResult(result: String, context: Any)                                 // EDT
+    fun cleanResponse(raw: String): String                      // 默认 ResponseCleaner.clean；解释覆写 cleanMarkdown
+    fun handleResult(result: String, context: Any)              // EDT
 }
 ```
 
-后续新功能（如 AI 代码解释）只需实现 `AiFeature` 并经 plugin.xml 的 `codesense.aiFeature` 扩展点注册，挂载到编辑器右键 `CodeSense.EditorGroup`，无需改动执行层与 AI 层。
+新功能（如后续更多 AI 能力）只需实现 `AiFeature` 并经 plugin.xml 的 `codesense.aiFeature` 扩展点注册，挂载到编辑器右键 `CodeSense.EditorGroup`，无需改动执行层与 AI 层。「代码解释」即按此框架完成。
 
 ## 3. 核心组件
 
@@ -62,8 +66,15 @@ interface AiFeature {
 | `DiffTextBuilder` | 平台胶水：Change → 内容读取（失败降级文件名清单）→ section 拼装；总量 60000 字符（可配置）截断 |
 | `PromptBuilder` | 系统提示词（Conventional Commits 规则/语言/单行输出约束）+ 用户消息（文件清单 + diff） |
 | `OpenAiCompatClient` | OpenAI 兼容 HTTP 客户端；10s 连接/60s 请求超时；401/403/404/429 中文错误映射 |
-| `ResponseCleaner` | 清洗输出：去围栏/引号，取首行非空；Conventional 格式校验 |
-| `AiInvocationService` | 统一执行管线 + 通知（CodeSenseAI 通知组） |
+| `ResponseCleaner` | 清洗输出：去围栏/引号，取首行非空；Conventional 格式校验；`cleanMarkdown` 保留 Markdown 结构（仅去整篇包裹围栏） |
+| `ExplainCodeAction` | 编辑器右键入口：`CodeContextBuilder` 采集目标 → `ExplainCodeFeature` 启动管线；无目标时警告 |
+| `CodeContextBuilder` | 采集待解释代码（EDT）：选区 → 光标最近 `PsiNameIdentifierOwner` → 同缩进块兜底；超 20000 字符截断 |
+| `SymbolKindDetector` | 纯函数符号判别（类/接口/方法/函数/代码块），语言无关关键字启发式 |
+| `PromptBuilder.buildExplainCode` | 结构化解释提示词：五段固定标题 + 语言/文件/符号类型/代码，输出语言跟随设置 |
+| `MarkdownToHtml` | 受限 Markdown 子集 → HTML（标题/加粗/行内代码/代码围栏/列表/段落 + 转义），零第三方依赖 |
+| `ExplainCodeFeature` | 代码解释功能：组装解释 prompt，`cleanMarkdown` 清洗，渲染后弹 `CodeExplainDialog`（非模态） |
+| `CodeExplainDialog` | 非模态结果对话框：只读 HTML 视图 + 「复制全文」/「关闭」，主题适配底色 |
+| `AiInvocationService` | 统一执行管线 + 通知（CodeSenseAI 通知组）；按 `feature.maxOutputTokens` 透传输出长度 |
 | `AppSettings` | 持久化（`codesense-ai.xml`）+ PasswordSafe 密钥（serviceName=CodeSenseAI, key=providerId） |
 | `SettingsConfigurable` | 设置页：厂商/类型/baseUrl/model（可编辑下拉）/API Key + 添加自定义/删除/测试连接 + 语言/diff 上限 |
 
@@ -74,19 +85,28 @@ interface AiFeature {
 3. 清洗输出 → `invokeLater` 回填 `CommitMessage.setCommitMessage()`（用户可继续编辑）；
 4. 失败经 `onThrowable` → 错误通知（含中文原因）。
 
+### 「代码解释」数据流
+
+1. EDT：右键/快捷键 → `ExplainCodeAction` → `CodeContextBuilder.build`（选区文本或光标最近命名符号，纯字符串）→ 无目标则警告通知；
+2. 后台（Task.Backgroundable，进度「正在解释代码…」）：`ExplainCodeFeature.buildPrompt`（ReadAction 内）→ `client.chat(..., 2048)`（可取消，经 `feature.maxOutputTokens` 透传）→ `cleanMarkdown`（保留 Markdown 结构）；
+3. `invokeLater` 回 EDT：`MarkdownToHtml.convert` → `CodeExplainDialog.show()`（非模态，可复制/关闭）；
+4. 失败经 `onThrowable` → 复用既有错误通知。
+
 ## 5. 错误处理
 
 - 未配置厂商/密钥 → 警告通知；
 - 401「API Key 无效」/ 403「无访问权限」/ 404「接口地址或模型名有误」/ 429「请求过于频繁或额度不足」（附 error.message）；
 - 网络/超时/解析失败 → 错误通知含异常摘要；
 - 无变更 → 「没有可提交的变更」；
-- 单文件内容读取失败 → 降级为文件名清单条目，不中断。
+- 单文件内容读取失败 → 降级为文件名清单条目，不中断；
+- 无解释目标（无选区且光标未命中符号）→ 「请先选中代码或将光标置于类/方法/函数内」警告，不发起请求；
+- 解释输入超长（>20000 字符）→ 截断并标注「内容过长已截断」，仍解释首部。
 
 ## 6. 测试策略
 
-- 纯逻辑单测（JUnit 5）：SimpleLineDiff / DiffFormatter / PromptBuilder / ResponseCleaner / ChatModels（DTO 序列化）；
-- AI 客户端测试：JDK 内置 HttpServer 模拟端点，验证请求结构/鉴权头/响应解析/错误映射/配置缺失提示；
-- 平台集成：runIde 沙箱端到端（按钮渲染、真实调用、回填）；
+- 纯逻辑单测（JUnit 5）：SimpleLineDiff / DiffFormatter / PromptBuilder（含 `buildExplainCode`）/ ResponseCleaner（含 `cleanMarkdown`）/ ChatModels（DTO 序列化，含 `maxTokens` 透传）/ SymbolKindDetector / MarkdownToHtml；
+- AI 客户端测试：JDK 内置 HttpServer 模拟端点，验证请求结构/鉴权头/响应解析/错误映射/配置缺失提示、四参 `chat` 的 `max_tokens` 透传与三参缺省 256；
+- 平台集成：runIde 沙箱端到端（按钮渲染、选区/符号两种触发、对话框渲染与复制、真实调用、错误提示）；
 - 兼容性：verifyPlugin（2024.2+）。
 
 ## 7. 待验证点（实施期确认）

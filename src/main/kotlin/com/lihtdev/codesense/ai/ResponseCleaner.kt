@@ -42,4 +42,23 @@ object ResponseCleaner {
 
     /** 是否符合 Conventional Commits 格式（type 可带 scope 与 !） */
     fun isConventional(message: String): Boolean = CONVENTIONAL_REGEX.matches(message)
+
+    /**
+     * 清洗 Markdown 结构化输出（用于代码解释等长文本功能）。
+     *
+     * 与 [clean] 的区别：不逐行 trim、不删除内部 ``` 代码围栏，
+     * 仅在整篇回答被首尾 ``` 围栏包裹时去除该对最外层围栏，保留内部结构与缩进。
+     */
+    fun cleanMarkdown(raw: String): String {
+        val lines = raw.lineSequence().toList()
+        var start = 0
+        var end = lines.size - 1
+        while (start <= end && lines[start].isBlank()) start++
+        while (end >= start && lines[end].isBlank()) end--
+        if (start <= end && lines[start].trim().startsWith("```") && lines[end].trim().startsWith("```")) {
+            start++
+            end--
+        }
+        return lines.subList(start, end + 1).joinToString("\n").trim()
+    }
 }

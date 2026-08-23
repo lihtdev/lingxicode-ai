@@ -60,4 +60,42 @@ class PromptBuilderTest {
         assertTrue(user.contains("- src/B.kt"))
         assertTrue(user.contains("+new line"))
     }
+
+    @Test
+    fun `解释消息结构为 system 加 user 两条`() {
+        val messages = PromptBuilder.buildExplainCode("Kotlin", "A.kt", "函数", "greet", "fun greet() {}", "zh")
+        assertEquals(2, messages.size)
+        assertEquals("system", messages[0].role)
+        assertEquals("user", messages[1].role)
+    }
+
+    @Test
+    fun `中文解释提示词包含五个中文标题`() {
+        val messages = PromptBuilder.buildExplainCode("Kotlin", "A.kt", "函数", null, "code", "zh")
+        val system = messages[0].content
+        listOf("概述", "作用与用途", "核心逻辑", "关键成分", "注意事项").forEach { title ->
+            assertTrue(system.contains("## $title"), "应包含标题 $title")
+        }
+    }
+
+    @Test
+    fun `英文解释提示词包含五个英文标题`() {
+        val messages = PromptBuilder.buildExplainCode("Kotlin", "A.kt", "function", null, "code", "en")
+        val system = messages[0].content
+        listOf("Overview", "Purpose", "Key Logic", "Key Elements", "Notes").forEach { title ->
+            assertTrue(system.contains("## $title"), "应包含标题 $title")
+        }
+        assertTrue(system.contains("English"))
+    }
+
+    @Test
+    fun `解释用户消息包含语言文件符号类型与代码`() {
+        val messages = PromptBuilder.buildExplainCode("Python", "calc.py", "函数", "add", "def add(a, b):", "zh")
+        val user = messages[1].content
+        assertTrue(user.contains("Python"))
+        assertTrue(user.contains("calc.py"))
+        assertTrue(user.contains("函数"))
+        assertTrue(user.contains("add"))
+        assertTrue(user.contains("def add(a, b):"))
+    }
 }

@@ -539,18 +539,31 @@ class SettingsConfigurable : Configurable {
             minimumSize = Dimension(240, 30)
             addActionListener { onProviderSelected() }
         }
+        // 数据行行高固定（首选/最小/最大三向统一，随 UI 缩放）：
+        // 抬高「提供商信息」区的最低高度并彻底控死行高——窗口任意缩放时数据行恒定不变，
+        // 内容变长或窗口被压缩也不会导致行高浮动、内容显示不完整
+        // （首选高度必须一并固定：仅设 min/max 会使首选高 < 最小高，弹窗 pack 时值列会被压成 0×0 不可见）
+        private val dataRowHeight: Int = JBUI.scale(32)
+
         private val providerValueLabel = JBLabel("").apply {
-            minimumSize = Dimension(350, preferredSize.height)
+            preferredSize = Dimension(350, dataRowHeight)
+            minimumSize = Dimension(350, dataRowHeight)
+            maximumSize = Dimension(350, dataRowHeight)
         }
         private val planTypeValueLabel = JBLabel("").apply {
-            minimumSize = Dimension(350, preferredSize.height)
+            preferredSize = Dimension(350, dataRowHeight)
+            minimumSize = Dimension(350, dataRowHeight)
+            maximumSize = Dimension(350, dataRowHeight)
         }
         private val baseUrlValueLabel = JBLabel("").apply {
-            minimumSize = Dimension(400, preferredSize.height)
+            preferredSize = Dimension(400, dataRowHeight)
+            minimumSize = Dimension(400, dataRowHeight)
+            maximumSize = Dimension(400, dataRowHeight)
         }
         private val apiKeyField = JBPasswordField().apply {
-            minimumSize = Dimension(400, preferredSize.height)
-            maximumSize = Dimension(400, Int.MAX_VALUE)
+            preferredSize = Dimension(400, dataRowHeight)
+            minimumSize = Dimension(400, dataRowHeight)
+            maximumSize = Dimension(400, dataRowHeight)
         }
         private val testButton = JButton(CodeSenseBundle.message("settings.testConnection")).apply {
             addActionListener { testConnection() }

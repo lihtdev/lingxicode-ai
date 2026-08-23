@@ -16,11 +16,24 @@ interface AiClient {
     fun chat(provider: AiProviderConfig, apiKey: String, messages: List<ChatMessage>): String
 
     /**
+     * 发送对话请求并指定输出 token 上限，返回首个回复文本。
+     * 长文本功能（如代码解释）使用本方法以获得足够输出长度。
+     * @param maxTokens 模型回复的最大 token 数
+     * @throws AiClientException 配置缺失、网络失败、HTTP 错误或响应异常时抛出（message 为用户可读中文）
+     */
+    fun chat(provider: AiProviderConfig, apiKey: String, messages: List<ChatMessage>, maxTokens: Int): String
+
+    /**
      * 获取提供商支持的模型列表（OpenAI 兼容 `GET {baseUrl}/models`）。
      * @return 模型名列表（按字母升序排列）
      * @throws AiClientException 配置缺失、网络失败、HTTP 错误或响应异常时抛出
      */
     fun listModels(provider: AiProviderConfig, apiKey: String): List<String>
+
+    companion object {
+        /** 输出 token 默认上限（提交信息等短文本功能） */
+        const val DEFAULT_MAX_TOKENS = 256
+    }
 }
 
 /**

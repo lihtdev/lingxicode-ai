@@ -1,6 +1,7 @@
 package com.lihtdev.codesense.feature
 
 import com.lihtdev.codesense.ai.ChatMessage
+import com.lihtdev.codesense.ai.ResponseCleaner
 import com.lihtdev.codesense.settings.AppSettingsState
 
 /**
@@ -21,6 +22,13 @@ interface AiFeature {
     val displayName: String
 
     /**
+     * 输出 token 上限：决定模型回复的最大长度。
+     * 默认 256（提交信息等短文本）；代码解释等长文本功能可覆写为更大值。
+     */
+    val maxOutputTokens: Int
+        get() = 256
+
+    /**
      * 组装提示词（在后台线程调用，可执行耗时读取，如 diff 内容）。
      *
      * @param context 功能上下文（各功能自定义类型，如 [CommitFeatureContext]）
@@ -35,4 +43,12 @@ interface AiFeature {
      * @param context 功能上下文
      */
     fun handleResult(result: String, context: Any)
+
+    /**
+     * 清洗模型原始输出（在调用 [handleResult] 前执行）。
+     *
+     * 默认按 [ResponseCleaner.clean] 清洗（适合提交信息等纯文本输出）；
+     * 需要保留 Markdown 结构的功能（如代码解释）可覆写为 [ResponseCleaner.cleanMarkdown]。
+     */
+    fun cleanResponse(raw: String): String = ResponseCleaner.clean(raw)
 }

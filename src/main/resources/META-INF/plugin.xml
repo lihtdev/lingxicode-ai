@@ -2,14 +2,15 @@
     <id>com.lihtdev.codesense</id>
     <name>CodeSense AI</name>
     <vendor>lihtdev</vendor>
-    <description><![CDATA[
-    CodeSense AI（灵犀码）— 面向开发者的 AI 能力集。<br/>
+    <!-- 描述前 40+ 字符须为拉丁字符（Plugin Verifier 的 STARTS_WITH_LATIN_SYMBOLS_REGEX 校验），故英文简介在前 -->
+    <description><![CDATA[CodeSense AI - An AI toolkit for JetBrains IDEs. One-click AI commit message generation and more.<br/>
+    灵犀码 — 面向开发者的 AI 能力集。<br/>
     当前功能：<br/>
     <ul>
         <li>AI 提交信息生成：在 Git 提交对话框一键根据代码变更生成 Conventional Commits 格式提交信息</li>
+        <li>AI 代码解释：选中代码或将光标置于类/方法/函数内，一键生成结构化解释并弹出展示</li>
         <li>支持 OpenAI / DeepSeek / GLM / Kimi / MiniMax / Qwen / Xiaomi MIMO 等预设厂商及任意自定义 OpenAI 兼容端点</li>
-    </ul>
-    ]]></description>
+    </ul>]]></description>
 
     <!-- 仅依赖平台模块，全系列 JetBrains IDE 可用 -->
     <depends>com.intellij.modules.platform</depends>
@@ -50,7 +51,7 @@
             <add-to-group group-id="Vcs.MessageActionGroup" anchor="first"/>
         </action>
 
-        <!-- 编辑器右键预留功能组（v1 为空组，后续挂载代码解释等 AI 功能） -->
+        <!-- 编辑器右键「CodeSense AI」功能组 -->
         <group id="CodeSense.EditorGroup"
                class="com.lihtdev.codesense.action.CodeSenseActionGroup"
                text="CodeSense AI"
@@ -58,6 +59,15 @@
                popup="true"
                icon="/icons/codesense.svg">
             <add-to-group group-id="EditorPopupMenu" anchor="last"/>
+
+            <!-- 解释代码：选中代码块 / 光标所在类、方法、函数 -->
+            <action id="CodeSense.ExplainCode"
+                    class="com.lihtdev.codesense.action.ExplainCodeAction"
+                    text="解释代码"
+                    description="用 AI 解释选中的代码，或将光标置于类/方法/函数内解释其含义"
+                    icon="/icons/codesense.svg">
+                <keyboard-shortcut keymap="$default" first-keystroke="ctrl alt shift E"/>
+            </action>
         </group>
     </actions>
 </idea-plugin>

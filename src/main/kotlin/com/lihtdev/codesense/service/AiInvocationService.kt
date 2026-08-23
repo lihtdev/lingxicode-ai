@@ -12,7 +12,6 @@ import com.lihtdev.codesense.ai.AiClient
 import com.lihtdev.codesense.ai.AiClientException
 import com.lihtdev.codesense.ai.ChatMessage
 import com.lihtdev.codesense.ai.OpenAiCompatClient
-import com.lihtdev.codesense.ai.ResponseCleaner
 import com.lihtdev.codesense.feature.AiFeature
 import com.lihtdev.codesense.i18n.CodeSenseBundle
 import com.lihtdev.codesense.settings.AppSettings
@@ -53,9 +52,9 @@ class AiInvocationService(private val client: AiClient = OpenAiCompatClient()) {
                     feature.buildPrompt(context, settings.state)
                 }
                 indicator.checkCanceled()
-                val raw = client.chat(provider, apiKey, messages)
+                val raw = client.chat(provider, apiKey, messages, feature.maxOutputTokens)
                 indicator.checkCanceled()
-                val cleaned = ResponseCleaner.clean(raw)
+                val cleaned = feature.cleanResponse(raw)
                 if (cleaned.isBlank()) {
                     throw AiClientException(CodeSenseBundle.message("error.emptyCleaned"))
                 }

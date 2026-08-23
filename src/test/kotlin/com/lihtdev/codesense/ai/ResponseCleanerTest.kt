@@ -78,4 +78,25 @@ class ResponseCleanerTest {
         assertFalse(ResponseCleaner.isConventional("feat 新增功能"))
         assertFalse(ResponseCleaner.isConventional(""))
     }
+
+    @Test
+    fun `cleanMarkdown 去除整篇包裹围栏`() {
+        val raw = "```markdown\n## 概述\n一段说明\n```"
+        val cleaned = ResponseCleaner.cleanMarkdown(raw)
+        assertTrue(cleaned.startsWith("## 概述"))
+        assertTrue(cleaned.endsWith("一段说明"))
+    }
+
+    @Test
+    fun `cleanMarkdown 保留内部代码围栏与缩进`() {
+        val raw = "## 示例\n\n```kotlin\nfun main() {\n    println()\n}\n```"
+        val cleaned = ResponseCleaner.cleanMarkdown(raw)
+        assertTrue(cleaned.contains("```kotlin"))
+        assertTrue(cleaned.contains("    println()"))
+    }
+
+    @Test
+    fun `cleanMarkdown 无包裹围栏时保持原样`() {
+        assertEquals("## 概述\n说明内容", ResponseCleaner.cleanMarkdown("## 概述\n说明内容"))
+    }
 }

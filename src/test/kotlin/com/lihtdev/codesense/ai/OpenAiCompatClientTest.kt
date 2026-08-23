@@ -123,4 +123,20 @@ class OpenAiCompatClientTest {
         }
         assertTrue(exception.message!!.contains("接口地址"))
     }
+
+    @Test
+    fun `四参 chat 传递 max_tokens`() {
+        respondWith(200, """{"choices":[{"message":{"role":"assistant","content":"ok"}}]}""")
+        OpenAiCompatClient().chat(provider(), "sk", listOf(ChatMessage("user", "hi")), 2048)
+        val body = gson.fromJson(lastRequestBody.get(), ChatCompletionRequest::class.java)
+        assertEquals(2048, body.maxTokens)
+    }
+
+    @Test
+    fun `三参 chat 缺省 max_tokens 为 256`() {
+        respondWith(200, """{"choices":[{"message":{"role":"assistant","content":"ok"}}]}""")
+        OpenAiCompatClient().chat(provider(), "sk", listOf(ChatMessage("user", "hi")))
+        val body = gson.fromJson(lastRequestBody.get(), ChatCompletionRequest::class.java)
+        assertEquals(256, body.maxTokens)
+    }
 }

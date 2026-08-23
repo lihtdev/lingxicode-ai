@@ -1,10 +1,10 @@
 package com.lihtdev.codesense.ui
 
 import com.intellij.ui.JBColor
+import com.intellij.util.ui.JBFont
 import com.intellij.util.ui.JBUI
 import java.awt.Component
 import java.awt.FlowLayout
-import java.awt.Font
 import java.awt.Graphics
 import javax.swing.JLabel
 import javax.swing.JPanel
@@ -30,12 +30,11 @@ object ChipComponents {
 
     /**
      * 单个只读 chip：文字 + 圆角边框（无交互按钮）。
-     * 字号 11f，与设置页标签一致。
+     * 字号用 JBFont.small()（约 11px，随 IDE 字体缩放），与设置页标签一致。
      */
     fun chipLabel(text: String): JPanel {
         val label = JLabel(text).apply {
-            val base = font ?: Font(Font.SANS_SERIF, Font.PLAIN, 12)
-            font = base.deriveFont(11f)
+            font = JBFont.small()
         }
         return JPanel(FlowLayout(FlowLayout.LEFT, 0, 0)).apply {
             isOpaque = false

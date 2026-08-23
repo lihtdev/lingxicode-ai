@@ -26,7 +26,15 @@ class OpenAiCompatClient : AiClient {
         .connectTimeout(Duration.ofSeconds(CONNECT_TIMEOUT_SECONDS))
         .build()
 
-    override fun chat(provider: AiProviderConfig, apiKey: String, messages: List<ChatMessage>): String {
+    override fun chat(provider: AiProviderConfig, apiKey: String, messages: List<ChatMessage>): String =
+        chat(provider, apiKey, messages, AiClient.DEFAULT_MAX_TOKENS)
+
+    override fun chat(
+        provider: AiProviderConfig,
+        apiKey: String,
+        messages: List<ChatMessage>,
+        maxTokens: Int,
+    ): String {
         val baseUrl = provider.baseUrl.trim().trimEnd('/')
         if (baseUrl.isBlank()) {
             throw AiClientException(CodeSenseBundle.message("error.baseUrlNotSet"))
@@ -41,7 +49,7 @@ class OpenAiCompatClient : AiClient {
             .header("Authorization", "Bearer $apiKey")
             .POST(
                 HttpRequest.BodyPublishers.ofString(
-                    gson.toJson(ChatCompletionRequest(provider.model, messages)),
+                    gson.toJson(ChatCompletionRequest(provider.model, messages, maxTokens = maxTokens)),
                     Charsets.UTF_8,
                 ),
             )

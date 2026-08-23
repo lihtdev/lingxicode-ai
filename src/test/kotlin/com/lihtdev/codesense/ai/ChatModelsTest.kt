@@ -33,6 +33,13 @@ class ChatModelsTest {
     }
 
     @Test
+    fun `自定义 maxTokens 序列化到 max_tokens`() {
+        val request = ChatCompletionRequest("m", listOf(ChatMessage("user", "x")), maxTokens = 4096)
+        val json = gson.toJson(request)
+        assertTrue(json.contains("\"max_tokens\":4096"))
+    }
+
+    @Test
     fun `响应反解析提取首个回复内容`() {
         val json = """{"choices":[{"message":{"role":"assistant","content":"feat: 新增导出"}}]}"""
         val response = gson.fromJson(json, ChatCompletionResponse::class.java)

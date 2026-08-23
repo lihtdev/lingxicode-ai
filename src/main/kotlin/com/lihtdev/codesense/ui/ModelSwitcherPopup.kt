@@ -12,7 +12,9 @@ import com.intellij.ui.ScreenUtil
 import com.intellij.ui.components.JBLabel
 import com.intellij.ui.components.JBList
 import com.intellij.util.ui.EmptyIcon
+import com.intellij.util.ui.JBFont
 import com.intellij.util.ui.JBUI
+import com.intellij.util.ui.UIUtil
 import com.lihtdev.codesense.i18n.CodeSenseBundle
 import com.lihtdev.codesense.settings.AppSettings
 import com.lihtdev.codesense.settings.ProviderPlanType
@@ -22,7 +24,6 @@ import java.awt.BorderLayout
 import java.awt.Component
 import java.awt.Dimension
 import java.awt.FlowLayout
-import java.awt.Font
 import java.awt.GridBagConstraints
 import java.awt.GridBagLayout
 import java.awt.Point
@@ -77,19 +78,16 @@ object ModelSwitcherPopup {
             .setRequestFocus(true)
             .createPopup()
 
-        // 头部：品牌栏（左侧 logo + 品牌名，右侧设置齿轮）+ 功能小标题
-        val headerBox = JPanel().apply {
-            layout = javax.swing.BoxLayout(this, javax.swing.BoxLayout.Y_AXIS)
-            add(
-                createBrandBar(
-                    onGearClick = {
-                        popupRef.closeOk(null)
-                        SettingsConfigurable.open(project)
-                    },
-                ),
-            )
-            add(sectionCaption("popup.currentModel.title"))
-        }
+        // 头部：品牌栏（左侧 logo + 品牌名，右侧设置齿轮）+ 分隔线 + 粗体小节标题
+        val headerBox = createHeaderBox(
+            brandBar = createBrandBar(
+                onGearClick = {
+                    popupRef.closeOk(null)
+                    SettingsConfigurable.open(project)
+                },
+            ),
+            titleKey = "popup.currentModel.title",
+        )
         panel.add(headerBox, BorderLayout.NORTH)
 
         if (provider != null) {
@@ -100,7 +98,7 @@ object ModelSwitcherPopup {
             val modelRow = JPanel(FlowLayout(FlowLayout.LEFT, 6, 0)).apply {
                 isOpaque = false
                 add(JBLabel(provider.model).apply {
-                    font = font.deriveFont(Font.PLAIN, 12f)
+                    font = JBFont.label()
                 })
                 if (provider.modelTags.isNotEmpty()) {
                     add(ChipComponents.chipsRow(provider.modelTags, LIST_WIDTH - 140))
@@ -110,9 +108,9 @@ object ModelSwitcherPopup {
             val providerLabel = JBLabel(
                 "${provider.displayName} · ${providerPlanTypeLabel(provider.planType)}",
             ).apply {
-                font = font.deriveFont(Font.PLAIN, 11f)
-                foreground = JBColor.GRAY
-                border = JBUI.Borders.emptyTop(2)
+                font = JBFont.small()
+                foreground = UIUtil.getContextHelpForeground()
+                border = JBUI.Borders.emptyTop(4)
             }
             providerLabel.alignmentX = Component.LEFT_ALIGNMENT
             infoPanel.add(modelRow)
@@ -120,7 +118,8 @@ object ModelSwitcherPopup {
             panel.add(infoPanel, BorderLayout.CENTER)
         } else {
             val noModelLabel = JBLabel(CodeSenseBundle.message("popup.currentModel.noModel")).apply {
-                font = font.deriveFont(Font.PLAIN, 12f)
+                font = JBFont.small()
+                foreground = UIUtil.getContextHelpForeground()
             }
             panel.add(noModelLabel, BorderLayout.CENTER)
         }
@@ -131,12 +130,15 @@ object ModelSwitcherPopup {
                 showSecondLevel(project, owner, onChanged)
             }
         }
-        // 按钮行：右对齐，与信息区保持间距
-        val buttonPanel = JPanel(FlowLayout(FlowLayout.RIGHT, 0, 0)).apply {
-            border = JBUI.Borders.empty(14, 0, 0, 0)
-            add(switchButton)
+        // 按钮行：底部全宽主操作，与信息区保持间距
+        val buttonPanel = JPanel(BorderLayout()).apply {
+            border = JBUI.Borders.empty(12, 0, 0, 0)
+            add(switchButton, BorderLayout.CENTER)
         }
         panel.add(buttonPanel, BorderLayout.SOUTH)
+
+        // 固定宽度与二级列表对齐，保证两级弹框视觉一致
+        panel.preferredSize = Dimension(LIST_WIDTH, panel.preferredSize.height)
 
         // 显示在状态栏图标上方
         showAbove(popupRef, owner)
@@ -187,19 +189,20 @@ object ModelSwitcherPopup {
             }
         }
 
-        // 头部：品牌栏（二级不带齿轮）+ 功能小标题
-        val headerBox = JPanel().apply {
-            layout = javax.swing.BoxLayout(this, javax.swing.BoxLayout.Y_AXIS)
-            add(createBrandBar(onGearClick = null))
-            add(sectionCaption("popup.selectModel.title"))
-        }
+        // 头部：品牌栏（二级不带齿轮）+ 分隔线 + 粗体小节标题
+        val headerBox = createHeaderBox(
+            brandBar = createBrandBar(onGearClick = null),
+            titleKey = "popup.selectModel.title",
+        )
 
         // 列表滚动面板：固定宽度、高度受限，模型多时内部滚动
-        val headerHeight = headerBox.preferredSize.height
-        val listHeight = minOf(entries.size, MAX_VISIBLE_ROWS) * ROW_HEIGHT
+        // （头部高度由 NORTH 的 headerBox 占据，此处只计列表本身；
+        //   高度按渲染器实际行高求和——分组标题行与模型行高度不同，
+        //   固定行高估算会裁掉行——上限仍为 MAX_VISIBLE_ROWS 行）
+        val listHeight = minOf(list.preferredSize.height, MAX_VISIBLE_ROWS * ROW_HEIGHT)
         val scrollPane = JScrollPane(list).apply {
             border = JBUI.Borders.empty()
-            preferredSize = Dimension(LIST_WIDTH, headerHeight + listHeight)
+            preferredSize = Dimension(LIST_WIDTH, listHeight)
             // 长模型名直接裁剪，不出现横向滚动条
             horizontalScrollBarPolicy = JScrollPane.HORIZONTAL_SCROLLBAR_NEVER
         }
@@ -265,8 +268,8 @@ object ModelSwitcherPopup {
                 border = JBUI.Borders.empty(7, 10, 3, 10)
             }
             row.add(JLabel(header.displayName).apply {
-                font = font.deriveFont(Font.BOLD, 12f)
-                foreground = JBColor.GRAY
+                font = JBFont.small().asBold()
+                foreground = UIUtil.getContextHelpForeground()
             })
             row.add(ChipComponents.chipLabel(providerPlanTypeLabel(header.planType)))
             return row
@@ -289,7 +292,7 @@ object ModelSwitcherPopup {
                 }
             })
             row.add(JLabel(model.model).apply {
-                font = font.deriveFont(if (active) Font.BOLD else Font.PLAIN, 12f)
+                font = if (active) JBFont.label().asBold() else JBFont.label()
                 foreground = if (isSelected) {
                     list?.selectionForeground ?: JBColor.foreground()
                 } else {
@@ -333,14 +336,14 @@ object ModelSwitcherPopup {
     private fun createBrandBar(onGearClick: (() -> Unit)?): JComponent {
         val logo = JLabel(IconLoader.getIcon("/icons/codesense.svg", ModelSwitcherPopup::class.java))
         val nameLabel = JBLabel(CodeSenseBundle.message("popup.brand.name")).apply {
-            font = font.deriveFont(Font.BOLD, 13f)
+            font = JBFont.label().asBold()
         }
         val titleBlock = JPanel(FlowLayout(FlowLayout.LEFT, 6, 0)).apply {
             add(logo)
             add(nameLabel)
         }
         val bar = JPanel(GridBagLayout()).apply {
-            border = JBUI.Borders.empty(0, 0, 4, 0)
+            border = JBUI.Borders.empty(0, 0, 8, 0)
         }
 
         // 品牌块：weightx 吸收剩余宽度并靠左（anchor=WEST 自带垂直居中）
@@ -374,11 +377,38 @@ object ModelSwitcherPopup {
         return bar
     }
 
-    /** 功能小标题（品牌栏下方，灰色小字；底部留 8px 与内容区隔） */
-    private fun sectionCaption(key: String): JComponent = JBLabel(CodeSenseBundle.message(key)).apply {
-        font = font.deriveFont(Font.PLAIN, 11f)
-        foreground = JBColor.GRAY
-        border = JBUI.Borders.empty(0, 0, 8, 0)
+    /**
+     * 头部容器：品牌栏 / 分隔线 / 小节标题纵向三行。
+     * 用 GridBag 单列 + fill=HORIZONTAL 保证每行确定性撑满弹框宽度
+     * （BoxLayout Y_AXIS 的横向宽度按扩容能力分配，行为不可靠）。
+     */
+    private fun createHeaderBox(brandBar: JComponent, titleKey: String): JComponent {
+        val box = JPanel(GridBagLayout())
+        val gbc = GridBagConstraints().apply {
+            gridx = 0
+            weightx = 1.0
+            fill = GridBagConstraints.HORIZONTAL
+        }
+        gbc.gridy = 0
+        box.add(brandBar, gbc)
+        gbc.gridy = 1
+        box.add(createDivider(), gbc)
+        gbc.gridy = 2
+        box.add(sectionHeader(titleKey), gbc)
+        return box
+    }
+
+    /** 1px 分隔线（品牌栏下方，分隔品牌区与内容区；宽度由外层单列 GridBag 撑满） */
+    private fun createDivider(): JComponent = JPanel().apply {
+        background = JBColor.border()
+        isOpaque = true
+        preferredSize = Dimension(1, 1)
+    }
+
+    /** 功能小节标题（品牌栏 + 分隔线下方，粗体主色；上下留白拉开层次） */
+    private fun sectionHeader(key: String): JComponent = JBLabel(CodeSenseBundle.message(key)).apply {
+        font = JBFont.label().asBold()
+        border = JBUI.Borders.empty(10, 0, 10, 0)
     }
 
     /** 弹框边框估算（content 与窗口尺寸之差） */
