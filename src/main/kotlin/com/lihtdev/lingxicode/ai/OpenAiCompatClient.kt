@@ -75,8 +75,12 @@ class OpenAiCompatClient : AiClient {
         } catch (e: Exception) {
             throw AiClientException(LingxiCodeBundle.message("error.parseFailed", e.message ?: ""), e)
         }
-        return parsed.firstContent()
-            ?: throw AiClientException(LingxiCodeBundle.message("error.emptyResponse"))
+        val choice = parsed.choices.firstOrNull()
+        val content = choice?.message?.content
+        if (content.isNullOrEmpty()) {
+            throw AiClientException(emptyContentError(choice))
+        }
+        return content
     }
 
     override fun listModels(provider: AiProviderConfig, apiKey: String): List<String> {
@@ -138,11 +142,29 @@ class OpenAiCompatClient : AiClient {
         }
     }
 
+    /**
+     * 根据 content 为空时的响应特征，生成具体原因提示：
+     * finish_reason=length 或存在 reasoning_content，说明推理模型的思考过程
+     * 耗尽了 max_tokens 输出配额（content 未开始生成即被截断）。
+     */
+    private fun emptyContentError(choice: ChatCompletionResponse.Choice?): String {
+        val isTruncated = choice?.finishReason == FINISH_REASON_LENGTH ||
+            !choice?.message?.reasoningContent.isNullOrEmpty()
+        return if (isTruncated) {
+            LingxiCodeBundle.message("error.truncatedByMaxTokens")
+        } else {
+            LingxiCodeBundle.message("error.emptyResponse")
+        }
+    }
+
     companion object {
         /** 连接超时（秒） */
         const val CONNECT_TIMEOUT_SECONDS = 10L
 
         /** 请求超时（秒） */
         const val REQUEST_TIMEOUT_SECONDS = 60L
+
+        /** finish_reason 取值：因 max_tokens 上限被截断 */
+        private const val FINISH_REASON_LENGTH = "length"
     }
 }

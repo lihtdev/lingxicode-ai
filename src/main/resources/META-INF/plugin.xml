@@ -69,7 +69,7 @@
                     text="解释代码"
                     description="用 AI 解释选中的代码，或将光标置于类/方法/函数内解释其含义"
                     icon="/icons/lingxicode.svg">
-                <keyboard-shortcut keymap="$default" first-keystroke="ctrl alt shift E"/>
+                <keyboard-shortcut keymap="$default" first-keystroke="alt L"/>
             </action>
         </group>
     </actions>

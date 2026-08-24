@@ -139,4 +139,44 @@ class OpenAiCompatClientTest {
         val body = gson.fromJson(lastRequestBody.get(), ChatCompletionRequest::class.java)
         assertEquals(256, body.maxTokens)
     }
+
+    @Test
+    fun `content 为空且 finish_reason 为 length 时提示 token 截断`() {
+        respondWith(200, """{"choices":[{"message":{"role":"assistant","content":null},"finish_reason":"length"}]}""")
+        val exception = org.junit.jupiter.api.assertThrows<AiClientException> {
+            OpenAiCompatClient().chat(provider(), "sk", listOf(ChatMessage("user", "hi")))
+        }
+        assertTrue(exception.message!!.contains("截断"))
+    }
+
+    @Test
+    fun `content 为空且含 reasoning_content 时提示 token 截断`() {
+        respondWith(
+            200,
+            """{"choices":[{"message":{"role":"assistant","reasoning_content":"用户想要一条提交信息，我先分析 diff……"},"finish_reason":"length"}]}""",
+        )
+        val exception = org.junit.jupiter.api.assertThrows<AiClientException> {
+            OpenAiCompatClient().chat(provider(), "sk", listOf(ChatMessage("user", "hi")))
+        }
+        assertTrue(exception.message!!.contains("截断"))
+    }
+
+    @Test
+    fun `content 为空且无截断特征时保持原提示`() {
+        respondWith(200, """{"choices":[{"message":{"role":"assistant"}}]}""")
+        val exception = org.junit.jupiter.api.assertThrows<AiClientException> {
+            OpenAiCompatClient().chat(provider(), "sk", listOf(ChatMessage("user", "hi")))
+        }
+        assertTrue(exception.message!!.contains("模型未返回内容"))
+    }
+
+    @Test
+    fun `正常推理响应返回 content 而非 reasoning_content`() {
+        respondWith(
+            200,
+            """{"choices":[{"message":{"role":"assistant","reasoning_content":"思考过程……","content":"feat: 新增登录校验"},"finish_reason":"stop"}]}""",
+        )
+        val reply = OpenAiCompatClient().chat(provider(), "sk", listOf(ChatMessage("user", "hi")))
+        assertEquals("feat: 新增登录校验", reply)
+    }
 }

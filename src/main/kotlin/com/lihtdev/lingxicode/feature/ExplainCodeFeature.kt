@@ -51,6 +51,6 @@ class ExplainCodeFeature : AiFeature {
 
     companion object {
         /** 解释输出的最大 token 数（长文本，远大于默认 256） */
-        const val EXPLAIN_MAX_TOKENS = 2048
+        const val EXPLAIN_MAX_TOKENS = 4096
     }
 }

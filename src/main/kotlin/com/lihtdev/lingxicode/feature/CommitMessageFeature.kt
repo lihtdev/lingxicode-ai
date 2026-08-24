@@ -25,6 +25,9 @@ class CommitMessageFeature : AiFeature {
 
     override val displayName: String = LingxiCodeBundle.message("feature.commitMessage")
 
+    /** 推理模型的思考 token 也计入输出配额，短文本功能也需留足余量 */
+    override val maxOutputTokens: Int = COMMIT_MAX_TOKENS
+
     override fun buildPrompt(context: Any, settings: AppSettingsState): List<ChatMessage> {
         val ctx = context as CommitFeatureContext
         val diffText = DiffTextBuilder.build(ctx.changes, settings.maxDiffChars)
@@ -36,5 +39,10 @@ class CommitMessageFeature : AiFeature {
         val ctx = context as CommitFeatureContext
         // 回填提交消息框（用户可继续编辑后再提交）
         ctx.commitMessage.setCommitMessage(result)
+    }
+
+    companion object {
+        /** 提交信息输出 token 上限（推理模型的思考过程也计入输出配额，需留足余量） */
+        const val COMMIT_MAX_TOKENS = 4096
     }
 }

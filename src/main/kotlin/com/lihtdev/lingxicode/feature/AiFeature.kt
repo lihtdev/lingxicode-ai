@@ -24,6 +24,9 @@ interface AiFeature {
     /**
      * 输出 token 上限：决定模型回复的最大长度。
      * 默认 256（提交信息等短文本）；代码解释等长文本功能可覆写为更大值。
+     *
+     * 注意：推理模型（thinking）的思考 token 也计入该配额——思考阶段耗尽配额时
+     * content 为空（finish_reason=length），因此面向推理模型的功能需留足余量。
      */
     val maxOutputTokens: Int
         get() = 256
