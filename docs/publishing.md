@@ -79,7 +79,7 @@ signingPassword=<密码>
 若 `publishPlugin` 上传失败（网络等原因），可改用 Web 端手动提交：
 
 1. `./gradlew buildPlugin` 构建并确认产物 `build/distributions/lingxicode-ai-<版本>.zip`（已签名）；
-2. https://plugins.jetbrains.com → **Upload plugin** → 选择 zip → 填写更新说明（首版需填写插件简介与许可信息：选 **Custom / 专有免费**）；
+2. https://plugins.jetbrains.com → **Upload plugin** → 选择 zip → 填写更新说明（首版需填写插件简介与许可信息：选 **Apache 2.0**，与仓库 LICENSE 一致）；
 3. 同样进入审核流程。
 
 ## 常见问题

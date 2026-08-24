@@ -31,7 +31,7 @@
     </ul>
     <b>More</b>
     <ul>
-        <li>UI available in Chinese and English, following your IDE language setting</li>
+        <li>UI language (Chinese / English) configurable in Settings, no IDE restart needed</li>
         <li>Configurable AI output language (Chinese / English) and maximum diff size</li>
         <li>Works with all JetBrains IDEs (IDEA, PyCharm, GoLand, WebStorm, and more) since 2024.2</li>
     </ul>
@@ -44,13 +44,14 @@
         <li>AI 代码解释：选中代码或将光标置于类/方法/函数内，经右键菜单（快捷键 Alt+L）或行号旁图标一键生成结构化解释，支持复制全文</li>
         <li>灵活的模型配置：内置 OpenAI / DeepSeek / GLM / Kimi / MiniMax / Qwen / Xiaomi MIMO 预设及任意自定义 OpenAI 兼容端点，支持按量付费 / Coding Plan / Token Plan 类型，一键获取模型列表，状态栏即可快速切换模型</li>
         <li>隐私与安全：API Key 经 IntelliJ PasswordSafe 安全存储，不落盘；请求由 IDE 直连你配置的服务商端点</li>
-        <li>界面随 IDE 语言自动切换中英文；AI 输出语言、Diff 最大字符数均可配置</li>
+        <li>界面语言可在设置中切换（中文/English），即时生效，无需重启 IDE</li>
+        <li>AI 输出语言、Diff 最大字符数均可配置</li>
     </ul>]]></description>
 
     <!-- 仅依赖平台模块，全系列 JetBrains IDE 可用 -->
     <depends>com.intellij.modules.platform</depends>
-    <!-- 注意：平台不解析 action text/description 属性中的资源束 key，action 文案在各 action 类构造器中
-         经 LingxiCodeBundle 设置（与通知/对话框同一国际化路径，随 IDE 语言切换） -->
+    <!-- 注意：平台不解析 action text/description 属性中的资源束 key，action 文案在各自 update() 中
+         经 LingxiCodeBundle 按设置页「界面语言」实时解析（随插件内语言切换即时生效） -->
 
     <extensions defaultExtensionNs="com.intellij">
         <!-- 应用级设置持久化 -->

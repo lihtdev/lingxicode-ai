@@ -16,12 +16,6 @@ import com.lihtdev.lingxicode.service.AiInvocationService
  */
 class GenerateCommitMessageAction : AnAction() {
 
-    init {
-        // 文案经 LingxiCodeBundle 在实例化时设置（平台不解析 plugin.xml 属性中的资源束 key）
-        templatePresentation.setText(LingxiCodeBundle.message("action.generateCommitMessage.text"))
-        templatePresentation.setDescription(LingxiCodeBundle.message("action.generateCommitMessage.description"))
-    }
-
     private val invocationService = AiInvocationService()
 
     override fun actionPerformed(e: AnActionEvent) {
@@ -39,6 +33,9 @@ class GenerateCommitMessageAction : AnAction() {
     override fun update(e: AnActionEvent) {
         // 仅在提交消息上下文中可用
         e.presentation.isEnabled = e.getData(VcsDataKeys.COMMIT_MESSAGE_CONTROL) != null
+        // 文案每次展示按当前「界面语言」实时解析，语言切换后无需重启即生效
+        e.presentation.setText(LingxiCodeBundle.message("action.generateCommitMessage.text"))
+        e.presentation.setDescription(LingxiCodeBundle.message("action.generateCommitMessage.description"))
     }
 
     // update 仅读取数据上下文、不触碰 UI，声明在后台线程执行（避免 OLD_EDT 弃用告警）

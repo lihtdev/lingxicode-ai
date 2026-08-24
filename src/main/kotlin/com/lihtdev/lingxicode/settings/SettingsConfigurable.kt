@@ -142,7 +142,10 @@ class SettingsConfigurable : Configurable {
             LingxiCodeBundle.message("settings.language.zh"),
             LingxiCodeBundle.message("settings.language.en"),
         ),
-    )
+    ).apply {
+        // 语言切换对已打开界面不热刷新，注明生效方式
+        toolTipText = LingxiCodeBundle.message("settings.uiLanguage.hint")
+    }
     private val maxDiffField = javax.swing.JSpinner(javax.swing.SpinnerNumberModel(60000, 1000, 1000000, 1000))
     private val mainPanel: JComponent
 

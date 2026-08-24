@@ -18,11 +18,6 @@ import com.lihtdev.lingxicode.i18n.LingxiCodeBundle
  */
 class ExplainCodeAction : AnAction() {
 
-    init {
-        templatePresentation.setText(LingxiCodeBundle.message("action.explainCode.text"))
-        templatePresentation.setDescription(LingxiCodeBundle.message("action.explainCode.description"))
-    }
-
     override fun actionPerformed(e: AnActionEvent) {
         val project = e.project ?: return
         ExplainCodeStarter.trigger(project, CodeContextBuilder.build(e))
@@ -31,6 +26,9 @@ class ExplainCodeAction : AnAction() {
     override fun update(e: AnActionEvent) {
         // 仅在编辑器上下文可用；是否命中目标在 actionPerformed 中进一步校验
         e.presentation.isEnabled = e.getData(CommonDataKeys.EDITOR) != null
+        // 文案每次展开菜单按当前「界面语言」实时解析，语言切换后无需重启即生效
+        e.presentation.setText(LingxiCodeBundle.message("action.explainCode.text"))
+        e.presentation.setDescription(LingxiCodeBundle.message("action.explainCode.description"))
     }
 
     // update 仅读取数据上下文、不触碰 UI，声明在后台线程执行（避免 OLD_EDT 弃用告警）
