@@ -1,4 +1,4 @@
-# CodeSense AI（灵犀码）
+# LingxiCode AI（灵犀码）
 
 面向 JetBrains IDE 的 AI 能力集插件：让大模型根据代码变更为你生成高质量的 Conventional Commits 提交信息。
 
@@ -29,7 +29,7 @@
 
 ## 配置
 
-`Settings（设置）→ Tools（工具）→ CodeSense AI`：
+`Settings（设置）→ Tools（工具）→ LingxiCode AI`：
 
 1. 选择厂商与类型（自动带出 baseUrl，可手动修改）；
 2. 填写 API Key（可选填模型名或使用预设）；
@@ -70,7 +70,7 @@ action（提交框按钮/右键功能组）
         → settings（PersistentStateComponent + PasswordSafe）
 ```
 
-后续规划：基于 `codesense.aiFeature` 扩展点接入「AI 代码解释」等功能。
+后续规划：基于 `lingxicode.aiFeature` 扩展点接入「AI 代码解释」等功能。
 
 ## 许可
 

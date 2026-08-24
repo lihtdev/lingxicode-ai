@@ -1,9 +1,9 @@
 <idea-plugin>
-    <id>com.lihtdev.codesense</id>
-    <name>CodeSense AI</name>
+    <id>com.lihtdev.lingxicode</id>
+    <name>LingxiCode AI</name>
     <vendor>lihtdev</vendor>
     <!-- 描述前 40+ 字符须为拉丁字符（Plugin Verifier 的 STARTS_WITH_LATIN_SYMBOLS_REGEX 校验），故英文简介在前 -->
-    <description><![CDATA[CodeSense AI - An AI toolkit for JetBrains IDEs. One-click AI commit message generation and more.<br/>
+    <description><![CDATA[LingxiCode AI - An AI toolkit for JetBrains IDEs. One-click AI commit message generation and more.<br/>
     灵犀码 — 面向开发者的 AI 能力集。<br/>
     当前功能：<br/>
     <ul>
@@ -17,58 +17,58 @@
 
     <extensions defaultExtensionNs="com.intellij">
         <!-- 应用级设置持久化 -->
-        <applicationService serviceImplementation="com.lihtdev.codesense.settings.AppSettings"/>
+        <applicationService serviceImplementation="com.lihtdev.lingxicode.settings.AppSettings"/>
         <!-- 国际化资源束 -->
-        <applicationService serviceImplementation="com.lihtdev.codesense.i18n.CodeSenseBundle"/>
+        <applicationService serviceImplementation="com.lihtdev.lingxicode.i18n.LingxiCodeBundle"/>
         <!-- 设置页（Tools 下） -->
         <applicationConfigurable parentId="tools"
-                                 id="codesense.settings"
-                                 instance="com.lihtdev.codesense.settings.SettingsConfigurable"
-                                 displayName="CodeSense AI"
-                                 icon="/icons/codesense.svg"/>
+                                 id="lingxicode.settings"
+                                 instance="com.lihtdev.lingxicode.settings.SettingsConfigurable"
+                                 displayName="LingxiCode AI"
+                                 icon="/icons/lingxicode.svg"/>
         <!-- 通知组 -->
-        <notificationGroup id="CodeSenseAI" displayType="BALLOON"/>
+        <notificationGroup id="LingxiCodeAI" displayType="BALLOON"/>
         <!-- 编辑器行号旁 gutter「解释代码」图标 -->
         <codeInsight.lineMarkerProvider
-                implementationClass="com.lihtdev.codesense.action.ExplainCodeLineMarkerProvider"/>
+                implementationClass="com.lihtdev.lingxicode.action.ExplainCodeLineMarkerProvider"/>
         <!-- 状态栏模型切换器 -->
-        <statusBarWidgetFactory id="codesense.modelSwitcher"
-                                implementation="com.lihtdev.codesense.ui.ModelSwitcherWidgetFactory"
+        <statusBarWidgetFactory id="lingxicode.modelSwitcher"
+                                implementation="com.lihtdev.lingxicode.ui.ModelSwitcherWidgetFactory"
                                 order="after Encoding"/>
     </extensions>
 
     <!-- 预留的 AI 功能扩展点：后续新功能（如代码解释）经此注册 -->
     <extensionPoints>
         <extensionPoint name="aiFeature"
-                        interface="com.lihtdev.codesense.feature.AiFeature"
+                        interface="com.lihtdev.lingxicode.feature.AiFeature"
                         dynamic="true"/>
     </extensionPoints>
 
     <actions>
         <!-- 提交对话框消息区 toolbar 的「AI 生成」按钮 -->
-        <action id="CodeSense.GenerateCommitMessage"
-                class="com.lihtdev.codesense.action.GenerateCommitMessageAction"
+        <action id="LingxiCode.GenerateCommitMessage"
+                class="com.lihtdev.lingxicode.action.GenerateCommitMessageAction"
                 text="AI Generate Commit Message"
                 description="Use AI to generate a Conventional Commits message from code changes"
-                icon="/icons/codesense.svg">
+                icon="/icons/lingxicode.svg">
             <add-to-group group-id="Vcs.MessageActionGroup" anchor="first"/>
         </action>
 
-        <!-- 编辑器右键「CodeSense AI」功能组 -->
-        <group id="CodeSense.EditorGroup"
-               class="com.lihtdev.codesense.action.CodeSenseActionGroup"
-               text="CodeSense AI"
-               description="CodeSense AI features"
+        <!-- 编辑器右键「LingxiCode AI」功能组 -->
+        <group id="LingxiCode.EditorGroup"
+               class="com.lihtdev.lingxicode.action.LingxiCodeActionGroup"
+               text="LingxiCode AI"
+               description="LingxiCode AI features"
                popup="true"
-               icon="/icons/codesense.svg">
+               icon="/icons/lingxicode.svg">
             <add-to-group group-id="EditorPopupMenu" anchor="first"/>
 
             <!-- 解释代码：选中代码块 / 光标所在类、方法、函数 -->
-            <action id="CodeSense.ExplainCode"
-                    class="com.lihtdev.codesense.action.ExplainCodeAction"
+            <action id="LingxiCode.ExplainCode"
+                    class="com.lihtdev.lingxicode.action.ExplainCodeAction"
                     text="解释代码"
                     description="用 AI 解释选中的代码，或将光标置于类/方法/函数内解释其含义"
-                    icon="/icons/codesense.svg">
+                    icon="/icons/lingxicode.svg">
                 <keyboard-shortcut keymap="$default" first-keystroke="ctrl alt shift E"/>
             </action>
         </group>

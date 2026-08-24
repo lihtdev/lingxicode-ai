@@ -1,21 +1,21 @@
-# CodeSense AI（灵犀码）设计文档
+# LingxiCode AI（灵犀码）设计文档
 
 > 生成日期：2026-08-21（实施首日，由已批准的实施计划落地）
 
 ## 1. 背景与目标
 
-CodeSense AI 是面向 JetBrains IDE 的 AI 能力集插件。v1 交付「AI 提交信息生成」：在 Git 提交对话框中一键调用大模型，根据将要提交的代码变更（diff）生成 Conventional Commits 格式的提交信息并填入提交消息框。架构上预留「AI 代码解释」等后续功能的扩展入口。
+LingxiCode AI 是面向 JetBrains IDE 的 AI 能力集插件。v1 交付「AI 提交信息生成」：在 Git 提交对话框中一键调用大模型，根据将要提交的代码变更（diff）生成 Conventional Commits 格式的提交信息并填入提交消息框。架构上预留「AI 代码解释」等后续功能的扩展入口。
 
 ### 需求决策记录
 
 | 决策点 | 结论 |
 |---|---|
-| 项目命名 | CodeSense AI（中文名：灵犀码），插件 id `com.lihtdev.codesense` |
+| 项目命名 | LingxiCode AI（中文名：灵犀码），插件 id `com.lihtdev.lingxicode` |
 | AI 接入 | 预设 7 家厂商 + 任意自定义端点；**API 统一 OpenAI 兼容格式** |
 | 类型 | Token Plan / Coding Plan / 按量付费；**区别仅为 baseUrl**（MiniMax 两类型同端点） |
 | 模型名 | 预设列表 + 自定义输入（可编辑下拉） |
 | 提交信息格式 | Conventional Commits（`type: 描述`），描述默认中文可切英文 |
-| 交互入口 | 提交对话框消息区 toolbar 按钮；编辑器右键预留「CodeSense AI」功能组 |
+| 交互入口 | 提交对话框消息区 toolbar 按钮；编辑器右键预留「LingxiCode AI」功能组 |
 | 变更范围 | 跟随提交对话框勾选文件；无勾选回退默认 changelist |
 | 目标平台 | 全系列 JetBrains IDE 2024.2+（仅依赖 `com.intellij.modules.platform`，sinceBuild 242） |
 | 技术栈 | Kotlin + IntelliJ Platform Gradle Plugin 2.x + java.net.http.HttpClient + Gson（平台捆绑）+ Task.Backgroundable |
@@ -28,7 +28,7 @@ UI/Action 层
   ├── ExplainCodeAction（编辑器右键「解释代码」+ 默认快捷键）
   ├── ExplainCodeLineMarkerProvider（编辑器行号旁 gutter 图标）
   ├── ExplainCodeStarter（右键/gutter 统一触发入口）
-  └── CodeSenseActionGroup（编辑器右键「CodeSense AI」组，锚定第一段）
+  └── LingxiCodeActionGroup（编辑器右键「LingxiCode AI」组，锚定第一段）
       ▼
 功能层（AiFeature 抽象）
   ├── CommitMessageFeature（提交信息生成）
@@ -55,7 +55,7 @@ interface AiFeature {
 }
 ```
 
-新功能（如后续更多 AI 能力）只需实现 `AiFeature` 并经 plugin.xml 的 `codesense.aiFeature` 扩展点注册，挂载到编辑器右键 `CodeSense.EditorGroup`，无需改动执行层与 AI 层。「代码解释」即按此框架完成。
+新功能（如后续更多 AI 能力）只需实现 `AiFeature` 并经 plugin.xml 的 `lingxicode.aiFeature` 扩展点注册，挂载到编辑器右键 `LingxiCode.EditorGroup`，无需改动执行层与 AI 层。「代码解释」即按此框架完成。
 
 ## 3. 核心组件
 
@@ -78,8 +78,8 @@ interface AiFeature {
 | `MarkdownToHtml` | 受限 Markdown 子集 → HTML（标题/加粗/行内代码/代码围栏/列表/段落 + 转义），零第三方依赖 |
 | `ExplainCodeFeature` | 代码解释功能：组装解释 prompt，`cleanMarkdown` 清洗，渲染后弹 `CodeExplainDialog`（非模态） |
 | `CodeExplainDialog` | 非模态结果对话框：只读 HTML 视图 + 「复制全文」/「关闭」，主题适配底色 |
-| `AiInvocationService` | 统一执行管线 + 通知（CodeSenseAI 通知组）；按 `feature.maxOutputTokens` 透传输出长度 |
-| `AppSettings` | 持久化（`codesense-ai.xml`）+ PasswordSafe 密钥（serviceName=CodeSenseAI, key=providerId） |
+| `AiInvocationService` | 统一执行管线 + 通知（LingxiCodeAI 通知组）；按 `feature.maxOutputTokens` 透传输出长度 |
+| `AppSettings` | 持久化（`lingxicode-ai.xml`）+ PasswordSafe 密钥（serviceName=LingxiCodeAI, key=providerId） |
 | `SettingsConfigurable` | 设置页：厂商/类型/baseUrl/model（可编辑下拉）/API Key + 添加自定义/删除/测试连接 + 语言/diff 上限 |
 
 ## 4. 数据流
@@ -98,7 +98,7 @@ interface AiFeature {
 
 ### 「解释代码」入口清单
 
-- 编辑器右键 → `CodeSense AI` 子菜单（锚定 `EditorPopupMenu` 第一段）→「解释代码」；
+- 编辑器右键 → `LingxiCode AI` 子菜单（锚定 `EditorPopupMenu` 第一段）→「解释代码」；
 - 默认快捷键 `Ctrl+Alt+Shift+E`（可在 Keymap 重绑）；
 - 编辑器行号旁 gutter 图标（仅类/接口/方法/函数名称标识符上，灰暗配色），单击解释该符号；
 - Find Action（`Ctrl+Shift+A`）搜索「解释代码」（动作注册即自动可搜索，零成本兜底）。
