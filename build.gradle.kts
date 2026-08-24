@@ -57,4 +57,32 @@ intellijPlatform {
             untilBuild = provider { null }
         }
     }
+
+    // 发布到 JetBrains Marketplace：令牌经 gradle 属性/环境变量注入（存于 ~/.gradle/gradle.properties，不入库）；
+    // 未配置时仅 publishPlugin 任务不可用，日常 buildPlugin/test 不受影响。
+    publishing {
+        token = providers.gradleProperty("jetbrainsToken")
+            .orElse(providers.environmentVariable("JETBRAINS_TOKEN"))
+        channels = listOf("default")
+    }
+}
+
+tasks {
+    // 插件包 PGP 签名：证书链与私钥均为仓库外文件（路径经 gradle 属性传入），
+    // 密钥文件位于 ~/.gradle/lingxicode-signing/。属性未配置时给空值，
+    // signPlugin 会走「自动生成自签名证书并打印到控制台」的首次流程。
+    val signingChain = providers.gradleProperty("signingCertificateChainFile")
+        .map { file(it).readText() }
+        .orElse("")
+    val keyPropName = "signingPrivateKeyFile"
+    val signingKey = providers.gradleProperty(keyPropName)
+        .map { file(it).readText() }
+        .orElse("")
+    val signingPassword = providers.gradleProperty("signingPassword")
+
+    signPlugin {
+        certificateChain = signingChain
+        `privateKey`.set(signingKey)
+        password = signingPassword
+    }
 }

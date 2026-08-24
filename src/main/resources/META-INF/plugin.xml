@@ -1,7 +1,7 @@
 <idea-plugin>
     <id>com.lihtdev.lingxicode</id>
     <name>LingxiCode AI</name>
-    <vendor>lihtdev</vendor>
+    <vendor email="lihaitao.me@qq.com">lihaitao</vendor><!-- 市场联系与审核通知用 -->
     <!-- 描述前 40+ 字符须为拉丁字符（Plugin Verifier 的 STARTS_WITH_LATIN_SYMBOLS_REGEX 校验），故英文简介在前 -->
     <description><![CDATA[LingxiCode AI - An AI toolkit for JetBrains IDEs. One-click AI commit message generation and more.<br/>
     灵犀码 — 面向开发者的 AI 能力集。<br/>
