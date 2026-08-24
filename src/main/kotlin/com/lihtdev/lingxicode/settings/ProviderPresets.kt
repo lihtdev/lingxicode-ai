@@ -2,10 +2,14 @@ package com.lihtdev.lingxicode.settings
 
 /**
  * 套餐预设：类型 + baseUrl。
+ *
+ * 注意：该类经 UserProvider.plans 持久化到 lingxicode-ai.xml，必须保持
+ * `var` 属性 + 构造默认值的形式（IntelliJ XmlSerializer 依赖无参可构造 +
+ * 可写访问器反序列化，否则整个 AppSettingsState 加载失败、设置回退默认值）。
  */
 data class PlanPreset(
-    val type: ProviderPlanType,
-    val baseUrl: String,
+    var type: ProviderPlanType = ProviderPlanType.PAY_AS_YOU_GO,
+    var baseUrl: String = "",
 )
 
 /**

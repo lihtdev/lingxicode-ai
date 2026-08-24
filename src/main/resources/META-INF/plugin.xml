@@ -49,9 +49,8 @@
 
     <!-- 仅依赖平台模块，全系列 JetBrains IDE 可用 -->
     <depends>com.intellij.modules.platform</depends>
-
-    <!-- 国际化资源束：下方 action 的 text/description 以键引用此束，随 IDE 语言切换 -->
-    <resource-bundle>messages.LingxiCodeBundle</resource-bundle>
+    <!-- 注意：平台不解析 action text/description 属性中的资源束 key，action 文案在各 action 类构造器中
+         经 LingxiCodeBundle 设置（与通知/对话框同一国际化路径，随 IDE 语言切换） -->
 
     <extensions defaultExtensionNs="com.intellij">
         <!-- 应用级设置持久化 -->
@@ -86,8 +85,6 @@
         <!-- 提交对话框消息区 toolbar 的「AI 生成」按钮 -->
         <action id="LingxiCode.GenerateCommitMessage"
                 class="com.lihtdev.lingxicode.action.GenerateCommitMessageAction"
-                text="action.generateCommitMessage.text"
-                description="action.generateCommitMessage.description"
                 icon="/icons/lingxicode.svg">
             <add-to-group group-id="Vcs.MessageActionGroup" anchor="first"/>
         </action>
@@ -104,8 +101,6 @@
             <!-- 解释代码：选中代码块 / 光标所在类、方法、函数 -->
             <action id="LingxiCode.ExplainCode"
                     class="com.lihtdev.lingxicode.action.ExplainCodeAction"
-                    text="action.explainCode.text"
-                    description="action.explainCode.description"
                     icon="/icons/lingxicode.svg">
                 <keyboard-shortcut keymap="$default" first-keystroke="alt L"/>
             </action>

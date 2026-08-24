@@ -16,6 +16,12 @@ import com.lihtdev.lingxicode.service.AiInvocationService
  */
 class GenerateCommitMessageAction : AnAction() {
 
+    init {
+        // 文案经 LingxiCodeBundle 在实例化时设置（平台不解析 plugin.xml 属性中的资源束 key）
+        templatePresentation.setText(LingxiCodeBundle.message("action.generateCommitMessage.text"))
+        templatePresentation.setDescription(LingxiCodeBundle.message("action.generateCommitMessage.description"))
+    }
+
     private val invocationService = AiInvocationService()
 
     override fun actionPerformed(e: AnActionEvent) {
