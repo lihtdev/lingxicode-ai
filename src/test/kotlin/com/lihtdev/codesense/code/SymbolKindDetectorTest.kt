@@ -49,4 +49,47 @@ class SymbolKindDetectorTest {
     fun `空输入判定为 BLOCK`() {
         assertEquals(ExplainSymbolKind.BLOCK, SymbolKindDetector.detect("   \n  \n"))
     }
+
+    @Test
+    fun `带注解的方法判定为 METHOD`() {
+        assertEquals(ExplainSymbolKind.METHOD, SymbolKindDetector.detect("@Override\npublic void foo() {"))
+        assertEquals(ExplainSymbolKind.METHOD, SymbolKindDetector.detect("@Test\nvoid testIt() {"))
+    }
+
+    @Test
+    fun `带修饰符的函数判定为 FUNCTION`() {
+        assertEquals(ExplainSymbolKind.FUNCTION, SymbolKindDetector.detect("suspend fun fetch(): String {"))
+        assertEquals(ExplainSymbolKind.FUNCTION, SymbolKindDetector.detect("private fun bar() {"))
+        assertEquals(ExplainSymbolKind.FUNCTION, SymbolKindDetector.detect("pub fn main() {"))
+        assertEquals(ExplainSymbolKind.FUNCTION, SymbolKindDetector.detect("export function go() {"))
+    }
+
+    @Test
+    fun `C# string 返回类型判定为 METHOD`() {
+        assertEquals(ExplainSymbolKind.METHOD, SymbolKindDetector.detect("public string GetName() {"))
+    }
+
+    @Test
+    fun `无关键字的名称加参数列表判定为 METHOD`() {
+        assertEquals(ExplainSymbolKind.METHOD, SymbolKindDetector.detect("foo(): string {"))
+        assertEquals(ExplainSymbolKind.METHOD, SymbolKindDetector.detect("async foo(x: number): void {"))
+    }
+
+    @Test
+    fun `变量持有函数不误判为 FUNCTION`() {
+        assertEquals(ExplainSymbolKind.BLOCK, SymbolKindDetector.detect("let handler = function() {"))
+    }
+
+    @Test
+    fun `Python 装饰器函数判定为 FUNCTION`() {
+        assertEquals(
+            ExplainSymbolKind.FUNCTION,
+            SymbolKindDetector.detect("@app.route(\"/hello\")\ndef hello():"),
+        )
+    }
+
+    @Test
+    fun `控制语句不误判为 METHOD`() {
+        assertEquals(ExplainSymbolKind.BLOCK, SymbolKindDetector.detect("for (int i = 0; i < 10; i++) {"))
+    }
 }

@@ -550,7 +550,7 @@ class SettingsConfigurable : Configurable {
         // 抬高「提供商信息」区的最低高度并彻底控死行高——窗口任意缩放时数据行恒定不变，
         // 内容变长或窗口被压缩也不会导致行高浮动、内容显示不完整
         // （首选高度必须一并固定：仅设 min/max 会使首选高 < 最小高，弹窗 pack 时值列会被压成 0×0 不可见）
-        private val dataRowHeight: Int = JBUI.scale(32)
+        private val dataRowHeight: Int = JBUI.scale(28)
 
         private val providerValueLabel = JBLabel("").apply {
             preferredSize = Dimension(350, dataRowHeight)
@@ -568,9 +568,9 @@ class SettingsConfigurable : Configurable {
             maximumSize = Dimension(400, dataRowHeight)
         }
         private val apiKeyField = JBPasswordField().apply {
-            preferredSize = Dimension(400, dataRowHeight)
-            minimumSize = Dimension(400, dataRowHeight)
-            maximumSize = Dimension(400, dataRowHeight)
+            preferredSize = Dimension(400, 32)
+            minimumSize = Dimension(400, 32)
+            maximumSize = Dimension(400, 32)
         }
         private val testButton = JButton(CodeSenseBundle.message("settings.testConnection")).apply {
             addActionListener { testConnection() }

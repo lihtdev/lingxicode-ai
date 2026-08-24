@@ -94,17 +94,28 @@ class CodeExplainDialog(
         val h2Size = base + 4
         val h3Size = base + 2
         val codeSize = base
+        // JEditorPane 的 CSS font-family 只解析第一个字体名（不像浏览器按栈回退），
+        // 故运行时从优先级栈挑首个可用字体：英文字体为先，中文字体殿后；
+        // 中文文字由系统字体回退渲染（Windows 下 Segoe UI 的系统默认搭配即微软雅黑）
+        val bodyFamily = firstAvailableFont(
+            "Dialog",
+            "PingFang SC", "Noto Sans SC", "Microsoft YaHei UI", "sans-serif",
+        )
+        val codeFamily = firstAvailableFont(
+            "Monospaced",
+            "JetBrains Mono", "Consolas", "Menlo", "DejaVu Sans Mono", "Courier New",
+        )
         return """
             <html>
             <head>
             <style>
-              body { font-family: sans-serif; font-size: ${bodySize}px; color: $fgHex; padding: 2px 16px 12px; }
+              body { font-family: $bodyFamily; font-size: ${bodySize}px; color: $fgHex; padding: 2px 16px 12px; }
               h2 { font-size: ${h2Size}px; font-weight: bold; margin: 16px 0 6px; }
               h3 { font-size: ${h3Size}px; font-weight: bold; margin: 12px 0 4px; }
               p { margin: 8px 0; }
               ul { margin: 8px 0; padding-left: 24px; }
               li { margin: 4px 0; }
-              code { font-family: 'JetBrains Mono', Consolas, 'Courier New', monospace; font-size: ${codeSize}px; color: $fgHex; background-color: $bgHex; padding: 1px 3px; }
+              code { font-family: $codeFamily; font-size: ${codeSize}px; color: $fgHex; background-color: $bgHex; padding: 1px 3px; }
               pre { background-color: $bgHex; padding: 10px; margin: 10px 0; }
               strong { font-weight: bold; }
             </style>
@@ -116,11 +127,21 @@ class CodeExplainDialog(
         """.trimIndent()
     }
 
+    /** 从优先级栈中挑第一个系统可用的字体族；均不可用时返回 [fallback] */
+    private fun firstAvailableFont(fallback: String, vararg families: String): String =
+        families.firstOrNull { it in availableFontFamilies } ?: fallback
+
     private fun hex(color: Color): String =
         "#%02x%02x%02x".format(color.red, color.green, color.blue)
 
     companion object {
         /** 代码块底色（浅色主题浅灰 / 深色主题深灰），主题感知 */
         private val CODE_BLOCK_BACKGROUND = JBColor(Color(0xF2F2F2), Color(0x2B2B2B))
+
+        /** 系统可用字体族集合（懒加载一次，供字体栈挑选） */
+        private val availableFontFamilies: Set<String> by lazy {
+            java.awt.GraphicsEnvironment.getLocalGraphicsEnvironment()
+                .availableFontFamilyNames.toHashSet()
+        }
     }
 }
