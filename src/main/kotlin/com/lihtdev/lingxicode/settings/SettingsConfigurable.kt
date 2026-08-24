@@ -155,7 +155,7 @@ class SettingsConfigurable : Configurable {
         table.tableHeader.reorderingAllowed = false
         table.autoResizeMode = JTable.AUTO_RESIZE_OFF
         table.fillsViewportHeight = true
-        // 数据列：只设最小宽与理想宽，实际列宽由 ModelTable 按窗口宽度比例分配
+        // 数据列：只设最小宽与理想宽，实际列宽由 ModelTable 以最小宽为基线、随窗口宽度按比例分配
         configureModelColumn(0, COL_MODEL_MIN, COL_MODEL_W)
         configureModelColumn(TAGS_COLUMN, COL_TAGS_MIN, COL_TAGS_W)
         configureModelColumn(2, COL_PROVIDER_MIN, COL_PROVIDER_W)
@@ -1800,8 +1800,15 @@ class SettingsConfigurable : Configurable {
         }
 
         /**
-         * 按窗口宽度比例分配列宽：以各列理想宽（preferred）为权重分配可视宽度，
-         * 逐列钳制在 [minWidth, maxWidth]（操作列 min==max，天然保持固定），余量多轮再分配。
+         * 让表格始终填满视口宽度：JTable 默认实现仅在视口比 preferred 更宽时才拉伸表格，
+         * 不拉伸时窗口收窄只会出现横向滚动条、列宽不收缩。
+         * 配合 [doLayout] 的列宽分配，窗口收窄时各列才能随视口向最小宽收缩。
+         */
+        override fun getScrollableTracksViewportWidth(): Boolean = parent is javax.swing.JViewport
+
+        /**
+         * 按窗口宽度分配列宽：以各列最小宽为基线，剩余空间按「理想宽 − 最小宽」权重
+         * 比例分配（算法见 [computeColumnWidths]；操作列 min==max 且权重为 0，天然固定）。
          * 用户正在手动拖表头列宽时（resizingColumn 非空）不干预；
          * 随后沿用 JBTable 的 doLayout（JTable.doLayout + busy-icon 定位，AUTO_RESIZE_OFF 下不改列宽）。
          */
@@ -1812,40 +1819,17 @@ class SettingsConfigurable : Configurable {
             super.doLayout()
         }
 
+        /** 以最小宽为基线按比例分配：mins 取各列 minWidth，权重取 preferredWidth − minWidth */
         private fun resizeColumnsProportionally() {
             val cm = columnModel ?: return
             val n = cm.columnCount
             val available = width - (insets.left + insets.right)
             if (n == 0 || available <= 0) return
-            val prefSum = (0 until n).sumOf { cm.getColumn(it).preferredWidth.toLong() }.takeIf { it > 0 } ?: 1L
-            val targets = IntArray(n)
-            var used = 0L
-            for (i in 0 until n) {
-                val col = cm.getColumn(i)
-                val target = (available.toLong() * col.preferredWidth / prefSum).toInt()
-                targets[i] = target.coerceIn(col.minWidth, col.maxWidth)
-                used += targets[i]
+            val mins = IntArray(n) { cm.getColumn(it).minWidth }
+            val weights = IntArray(n) {
+                (cm.getColumn(it).preferredWidth - cm.getColumn(it).minWidth).coerceAtLeast(0)
             }
-            // 钳制造成的差额按各列富余量多轮兜底再分配，保证总和贴合表格宽度
-            var diff = available.toLong() - used
-            var changed = true
-            while (diff != 0L && changed) {
-                changed = false
-                for (i in 0 until n) {
-                    if (diff == 0L) break
-                    val col = cm.getColumn(i)
-                    val step = if (diff > 0) {
-                        minOf((col.maxWidth - targets[i]).toLong(), diff)
-                    } else {
-                        minOf((targets[i] - col.minWidth).toLong(), -diff)
-                    }
-                    if (step > 0) {
-                        targets[i] = (targets[i].toLong() + step).toInt()
-                        diff -= step
-                        changed = true
-                    }
-                }
-            }
+            val targets = computeColumnWidths(available, mins, weights)
             for (i in 0 until n) {
                 cm.getColumn(i).width = targets[i]
             }
@@ -2139,7 +2123,8 @@ class SettingsConfigurable : Configurable {
         private const val ACTION_GAP = 8
         private const val ACTION_ICON_W = 26
 
-        // 列宽：数据列按「最小宽 + 理想宽（比例权重）」配置，实际宽度由 ModelTable 按窗口宽度分配
+        // 列宽：数据列按「最小宽（下限）+ 理想宽（默认宽度下的目标值）」配置，
+        // 实际宽度由 ModelTable 以最小宽为基线、剩余空间按（理想宽 − 最小宽）权重随窗口分配
         private const val COL_MODEL_W = 200           // 模型列理想宽（突出模型名，略加宽）
         private const val COL_MODEL_MIN = 150
         private const val COL_TYPE_W = 92             // 类型列理想宽（略收窄）
