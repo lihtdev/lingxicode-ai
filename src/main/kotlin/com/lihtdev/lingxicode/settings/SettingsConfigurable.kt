@@ -192,16 +192,19 @@ class SettingsConfigurable : Configurable {
 
     // ---- 子面板构建 ----
 
-    /** 顶部品牌区：Logo + 中英文名同行 + 版本/作者 */
+    /**
+     * 顶部品牌区：品牌标 + 中英文名同行 + 版本 chip + 作者/GitHub 小字行。
+     * Logo 复用品牌资产 pluginIcon.svg（40×40 收腰弧边星芒），保持品牌资产单一来源。
+     */
     private fun createHeaderPanel(): JPanel {
         val panel = JPanel(BorderLayout())
         panel.border = JBUI.Borders.empty(0, 0, 12, 0)
 
-        // Logo：用 IconUtil 缩放放大（原始 SVG 为 16×16，放大到 80×80）
-        val rawIcon = IconLoader.getIcon("/icons/lingxicode.svg", SettingsConfigurable::class.java)
-        val scaledIcon = IconUtil.scale(rawIcon, panel, 5.0f)
+        // Logo：品牌标 40×40 SVG 放大到 56×56（矢量缩放无失真），右侧留呼吸间距
+        val rawIcon = IconLoader.getIcon("/META-INF/pluginIcon.svg", SettingsConfigurable::class.java)
+        val scaledIcon = IconUtil.scale(rawIcon, panel, 1.4f)
         val iconLabel = JLabel(scaledIcon).apply {
-            border = JBUI.Borders.emptyRight(16)
+            border = JBUI.Borders.emptyRight(18)
         }
 
         // 文字区域
@@ -209,19 +212,20 @@ class SettingsConfigurable : Configurable {
             layout = javax.swing.BoxLayout(this, javax.swing.BoxLayout.Y_AXIS)
         }
 
-        // 第一行：英文名 + 中文名 + 版本号（同一行，字号一致）
+        // 第一行：英文名 + 中文名 + 版本号（同一行，字号一致；h1 与 meta 行 small 拉开反差，突出品牌名）
         val englishLabel = JLabel(LingxiCodeBundle.message("settings.header.englishName")).apply {
-            font = JBFont.h2()
+            font = JBFont.h1()
         }
         val chineseLabel = JLabel(LingxiCodeBundle.message("settings.header.chineseName")).apply {
             // 取 JBFont 标题字号（随 IDE 缩放），显式去粗与英文名形成粗细对比
-            font = JBFont.h2().deriveFont(Font.PLAIN)
+            font = JBFont.h1().deriveFont(Font.PLAIN)
         }
         val version = try {
             PluginManagerCore.getPlugin(PluginId.getId("com.lihtdev.lingxicode"))?.version ?: "0.1.0"
         } catch (_: Exception) {
             "0.1.0"
         }
+        // 版本号：描边圆角框（paintBorder 在文字之后绘制，只能描边不能填充，否则会盖住文字）
         val versionLabel = JLabel(" v$version ").apply {
             font = JBFont.small()
             foreground = UIUtil.getContextHelpForeground()
@@ -280,7 +284,7 @@ class SettingsConfigurable : Configurable {
         metaRow.alignmentX = Component.LEFT_ALIGNMENT
 
         textPanel.add(nameRow)
-        textPanel.add(javax.swing.Box.createVerticalStrut(6))
+        textPanel.add(javax.swing.Box.createVerticalStrut(5))
         textPanel.add(metaRow)
 
         val leftPanel = JPanel(FlowLayout(FlowLayout.LEFT, 0, 0)).apply {
