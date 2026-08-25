@@ -89,6 +89,37 @@ class PromptBuilderTest {
     }
 
     @Test
+    fun `中文解释提示词包含条件性流程图章节约定`() {
+        val messages = PromptBuilder.buildExplainCode("Kotlin", "A.kt", "函数", null, "code", "zh")
+        val system = messages[0].content
+        assertTrue(system.contains("## 流程图"), "应包含条件性第六标题 流程图")
+        assertTrue(system.contains("仅当"), "应说明流程图的条件触发")
+        assertTrue(system.contains("多分支"), "应列举复杂控制流特征")
+    }
+
+    @Test
+    fun `英文解释提示词包含条件性 Flowchart 章节约定`() {
+        val messages = PromptBuilder.buildExplainCode("Kotlin", "A.kt", "function", null, "code", "en")
+        assertTrue(messages[0].content.contains("## Flowchart"), "应包含条件性第六标题 Flowchart")
+    }
+
+    @Test
+    fun `解释提示词约束流程图宽度与规模上限`() {
+        val messages = PromptBuilder.buildExplainCode("Kotlin", "A.kt", "函数", null, "code", "zh")
+        val system = messages[0].content
+        assertTrue(system.contains("72"), "应约束流程图每行宽度上限")
+        assertTrue(system.contains("30 行"), "应约束流程图总行数上限")
+    }
+
+    @Test
+    fun `解释提示词允许流程图使用代码围栏`() {
+        val messages = PromptBuilder.buildExplainCode("Kotlin", "A.kt", "函数", null, "code", "zh")
+        val system = messages[0].content
+        assertTrue(system.contains("绘制流程图"), "围栏用途应放宽到流程图")
+        assertTrue(system.contains("无语言标注"), "流程图围栏应要求无语言标注")
+    }
+
+    @Test
     fun `解释用户消息包含语言文件符号类型与代码`() {
         val messages = PromptBuilder.buildExplainCode("Python", "calc.py", "函数", "add", "def add(a, b):", "zh")
         val user = messages[1].content

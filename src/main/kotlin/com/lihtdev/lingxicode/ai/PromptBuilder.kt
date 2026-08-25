@@ -78,6 +78,7 @@ object PromptBuilder {
     ): List<ChatMessage> {
         val outLang = if (outputLanguage.equals("en", ignoreCase = true)) "English" else "中文（简体）"
         val headings = if (outputLanguage.equals("en", ignoreCase = true)) EN_HEADINGS else ZH_HEADINGS
+        val flowchartHeading = if (outputLanguage.equals("en", ignoreCase = true)) EN_FLOWCHART_HEADING else ZH_FLOWCHART_HEADING
 
         val system = """
             你是一名资深软件工程师，擅长把代码用通俗、准确的语言解释给其他开发者。
@@ -86,20 +87,28 @@ object PromptBuilder {
             输出要求：
             1. 使用 Markdown 组织，但不要用 ``` 代码围栏包裹整篇回答。
             2. 只允许使用：二级标题（##）、三级标题（###）、加粗（**）、行内代码（`）、
-               代码围栏（```，仅用于引用代码片段）、无序列表（- ）。禁止表格、链接与一级标题（#）。
-            3. 严格按以下五个标题顺序输出，不得增删标题：
+               代码围栏（```，仅用于引用代码片段或绘制流程图）、无序列表（- ）。禁止表格、链接与一级标题（#）。
+            3. 严格按以下五个固定标题顺序输出（条件性第六标题见第 4 条），此外不得增删标题：
                ## ${headings[0]}
                ## ${headings[1]}
                ## ${headings[2]}
                ## ${headings[3]}
                ## ${headings[4]}
-            4. 解释正文用 $outLang 书写；代码标识符与关键字保持原样。
-            5. 「${headings[0]}」用一句话说清这段代码做什么（不超过 50 字）；
+            4. 条件性第六标题「## $flowchartHeading」：仅当代码包含多分支、循环、多步骤流程等复杂控制流时，
+               在「## ${headings[4]}」之后追加；简单直线型代码（顺序执行、无分支）不要追加，也不要输出空标题。
+               流程图绘制要求：
+               - 使用 ASCII/Unicode 制表符绘制（┌ ┐ └ ┘ │ ─ ▼ ├ ┤ ┼ 等），自上而下表达主流程；
+               - 整个流程图放在一个无语言标注的 ``` 代码围栏中（不要写 ```text 等语言标记）；
+               - 每行显示宽度不超过 72 列（中文按 2 列计）；全图不超过 30 行、12 个节点；
+               - 节点内用简短的业务语义文字（如「校验参数」「查询库存」），不要直接粘贴代码语句或变量名；
+               - 分支连线用「是/否」（英文输出时用 Y/N）标注条件走向；循环用回指箭头表示。
+            5. 解释正文用 $outLang 书写；代码标识符与关键字保持原样。
+            6. 「${headings[0]}」用一句话说清这段代码做什么（不超过 50 字）；
                「${headings[2]}」分要点说明关键流程 / 算法 / 数据流 / 控制流；
                「${headings[3]}」按符号类型组织：类/接口列主要成员与方法，方法/函数给入参与返回值，
                代码块给关键输入输出与依赖；
                「${headings[4]}」说明边界条件、异常、性能或潜在陷阱，无内容时写「无明显注意事项」。
-            6. 只输出正文，不要寒暄与解释性废话。
+            7. 只输出正文，不要寒暄与解释性废话。
         """.trimIndent()
 
         val user = buildString {
@@ -121,4 +130,10 @@ object PromptBuilder {
 
     /** 解释结果的英文标题序列（与模型输出约定一一对应） */
     private val EN_HEADINGS = listOf("Overview", "Purpose", "Key Logic", "Key Elements", "Notes")
+
+    /** 条件性第六标题（仅复杂控制流时由模型追加）：流程图 */
+    private const val ZH_FLOWCHART_HEADING = "流程图"
+
+    /** 条件性第六标题（英文）：Flowchart */
+    private const val EN_FLOWCHART_HEADING = "Flowchart"
 }

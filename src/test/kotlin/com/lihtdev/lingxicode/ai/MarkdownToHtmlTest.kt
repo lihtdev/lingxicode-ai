@@ -52,6 +52,14 @@ class MarkdownToHtmlTest {
     }
 
     @Test
+    fun `围栏内 Unicode 制表符原样保留`() {
+        // ASCII 流程图渲染依赖：Unicode 框线字符不被转义、缩进与换行保留在 pre 块内
+        val html = MarkdownToHtml.convert("```\n┌─校验─┐\n│ 通过 │\n└──────┘\n```")
+        assertTrue(html.contains("<pre><code>"))
+        assertTrue(html.contains("┌─校验─┐\n│ 通过 │\n└──────┘"))
+    }
+
+    @Test
     fun `空输入返回空串`() {
         assertEquals("", MarkdownToHtml.convert(""))
         assertEquals("", MarkdownToHtml.convert("   \n  \n"))

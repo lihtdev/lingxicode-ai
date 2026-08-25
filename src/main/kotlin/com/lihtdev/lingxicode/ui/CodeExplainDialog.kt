@@ -99,7 +99,7 @@ class CodeExplainDialog(
         // 中文文字由系统字体回退渲染（Windows 下 Segoe UI 的系统默认搭配即微软雅黑）
         val bodyFamily = firstAvailableFont(
             "Dialog",
-            "PingFang SC", "Noto Sans SC", "Microsoft YaHei UI", "sans-serif",
+            "PingFang SC", "Noto Sans SC", "Microsoft YaHei UI",
         )
         val codeFamily = firstAvailableFont(
             "Monospaced",

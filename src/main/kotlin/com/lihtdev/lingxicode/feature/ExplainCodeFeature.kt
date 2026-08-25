@@ -50,7 +50,7 @@ class ExplainCodeFeature : AiFeature {
     }
 
     companion object {
-        /** 解释输出的最大 token 数（长文本，远大于默认 256） */
-        const val EXPLAIN_MAX_TOKENS = 4096
+        /** 解释输出的最大 token 数（推理模型思考链也计入该配额，需为长文本 + 思考留足余量） */
+        const val EXPLAIN_MAX_TOKENS = 16384
     }
 }

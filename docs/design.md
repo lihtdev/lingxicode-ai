@@ -74,8 +74,8 @@ interface AiFeature {
 | `ExplainCodeLineMarkerProvider` | 编辑器行号旁 gutter 图标：仅在类/接口/方法/函数等声明级符号名称标识符上挂「解释」图标（灰暗配色，过滤变量/字段/参数），单击解释该符号 |
 | `CodeContextBuilder` | 采集待解释代码（EDT）：选区 → 光标最近 `PsiNameIdentifierOwner` → 同缩进块兜底；`fromElement` 从声明元素采集；超 20000 字符截断 |
 | `SymbolKindDetector` | 纯函数符号判别（类/接口/方法/函数/代码块），语言无关关键字启发式 |
-| `PromptBuilder.buildExplainCode` | 结构化解释提示词：五段固定标题 + 语言/文件/符号类型/代码，输出语言跟随设置 |
-| `MarkdownToHtml` | 受限 Markdown 子集 → HTML（标题/加粗/行内代码/代码围栏/列表/段落 + 转义），零第三方依赖 |
+| `PromptBuilder.buildExplainCode` | 结构化解释提示词：五段固定标题 + 条件性第六段（流程图，仅复杂控制流时由模型追加，ASCII/Unicode 制表符绘制于无语言标注围栏内）+ 语言/文件/符号类型/代码，输出语言跟随设置 |
+| `MarkdownToHtml` | 受限 Markdown 子集 → HTML（标题/加粗/行内代码/代码围栏/列表/段落 + 转义），零第三方依赖；围栏渲染依赖等宽字体 + 空白保留（流程图对齐依赖；已知局限：CJK 与 Unicode 框线字符混排时列对齐依赖字体回退，可能不完美） |
 | `ExplainCodeFeature` | 代码解释功能：组装解释 prompt，`cleanMarkdown` 清洗，渲染后弹 `CodeExplainDialog`（非模态） |
 | `CodeExplainDialog` | 非模态结果对话框：只读 HTML 视图 + 「复制全文」/「关闭」，主题适配底色 |
 | `AiInvocationService` | 统一执行管线 + 通知（LingxiCodeAI 通知组）；按 `feature.maxOutputTokens` 透传输出长度 |
@@ -92,7 +92,7 @@ interface AiFeature {
 ### 「代码解释」数据流
 
 1. EDT：右键/快捷键 → `ExplainCodeAction`；或点击 gutter 图标 → `ExplainCodeLineMarkerProvider` 导航处理器。二者分别经 `CodeContextBuilder.build` / `CodeContextBuilder.fromElement` 采集上下文（纯字符串），再并入 `ExplainCodeStarter.trigger`；无目标则警告通知；
-2. 后台（Task.Backgroundable，进度「正在解释代码…」）：`ExplainCodeFeature.buildPrompt`（ReadAction 内）→ `client.chat(..., 2048)`（可取消，经 `feature.maxOutputTokens` 透传）→ `cleanMarkdown`（保留 Markdown 结构）；
+2. 后台（Task.Backgroundable，进度「正在解释代码…」）：`ExplainCodeFeature.buildPrompt`（ReadAction 内）→ `client.chat(..., 16384)`（可取消，经 `feature.maxOutputTokens` 透传）→ `cleanMarkdown`（保留 Markdown 结构）；
 3. `invokeLater` 回 EDT：`MarkdownToHtml.convert` → `CodeExplainDialog.show()`（非模态，可复制/关闭）；
 4. 失败经 `onThrowable` → 复用既有错误通知。
 
