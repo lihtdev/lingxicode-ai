@@ -16,8 +16,7 @@ object PromptBuilder {
         val language = if (outputLanguage.equals("en", ignoreCase = true)) "English" else "中文（简体）"
         val system = """
             你是一名资深软件工程师，负责为 Git 提交生成高质量的提交信息。
-            请严格遵循 Conventional Commits 1.0.0 规范（https://www.conventionalcommits.org/en/v1.0.0/），
-            根据用户提供的代码变更（diff），生成一条规范的提交信息。
+            请根据用户提供的代码变更（diff），生成一条 Conventional Commits 格式的提交信息。
 
             规范要求：
             1. 提交信息结构：
@@ -39,10 +38,9 @@ object PromptBuilder {
 
             3. 可选 scope：用括号包裹，表示本次变更影响的范围（如 (ui)、(api)、(auth) 等）。
 
-            4. 破坏性变更：若本次变更包含不向后兼容的改动，需在 type 后加 ! 标记（如 feat!: 或 fix(api)!:），
-               并在 footer 中添加 BREAKING CHANGE: 说明。
-
-            5. 描述部分用 $language 书写，紧跟在冒号空格后，概括本次变更的核心目的，不超过 50 个字，结尾不加句号。
+            4. description 用 $language 书写，紧跟在冒号空格后，概括本次变更的核心目的，不超过 50 个字，结尾不加句号。
+            
+            5. 可选 body：若提供则需在 description 后空一行；body 同样使用 $language 书写，采用无序列表（- ）形式逐项列出主要变更内容，每项简洁说明该变更的具体行为、原因或影响，避免与描述部分简单重复。
 
             6. 只输出提交信息文本本身，禁止输出任何解释、前后缀、markdown 围栏或引号。
         """.trimIndent()
@@ -125,6 +123,69 @@ object PromptBuilder {
         )
     }
 
+    /**
+     * 组装「代码评审」功能的对话消息。
+     *
+     * 报告按固定标题顺序输出：总体评价 → 十个评审维度（按重要性/优先级降序）→ 总结；
+     * 每个维度内先列问题、有问题时紧随其后给出该维度的改进建议，无问题写「无明显问题」。
+     *
+     * @param language 代码所属语言展示名（如 Kotlin / Java）
+     * @param fileName 文件展示名
+     * @param symbolKindName 符号类型展示名（已本地化，如「类」/「方法」/「代码块」）
+     * @param symbolName 命中符号名（选中代码块时为 null）
+     * @param code 待评审代码文本
+     * @param outputLanguage 输出语言（"zh" 中文 / 其他值英文）
+     */
+    fun buildReviewCode(
+        language: String,
+        fileName: String,
+        symbolKindName: String,
+        symbolName: String?,
+        code: String,
+        outputLanguage: String,
+    ): List<ChatMessage> {
+        val en = outputLanguage.equals("en", ignoreCase = true)
+        val outLang = if (en) "English" else "中文（简体）"
+        val headings = if (en) EN_REVIEW_HEADINGS else ZH_REVIEW_HEADINGS
+        val suggestionLabel = if (en) EN_REVIEW_SUGGESTION_LABEL else ZH_REVIEW_SUGGESTION_LABEL
+        val noIssue = if (en) EN_REVIEW_NO_ISSUE else ZH_REVIEW_NO_ISSUE
+
+        val system = """
+            你是一名资深代码评审专家，擅长从多个维度评审代码质量并给出可执行的改进建议。
+            请根据用户提供的代码与上下文，输出一份结构化的评审报告。
+
+            输出要求：
+            1. 使用 Markdown 组织，但不要用 ``` 代码围栏包裹整篇回答。
+            2. 只允许使用：二级标题（##）、三级标题（###）、加粗（**）、行内代码（`）、
+               代码围栏（```，仅用于引用代码片段或给出改进示例）、无序列表（- ）和有序列表（1. ）。禁止表格、链接与一级标题（#）。
+            3. 严格按以下标题顺序输出，不得增删标题（评审维度已按重要性从高到低排列）：
+               ${headings.joinToString("\n               ") { "## $it" }}
+            4. 「${headings[0]}」用一段话给出整体质量结论与最值得关注的问题（不超过 100 字）。
+            5. 每个评审维度内部：
+               - 先按严重度从高到低列出发现的问题，每条用行内代码引用相关标识符或片段并说明理由；
+               - 有问题时，紧随其后用加粗「**$suggestionLabel**」引出该维度的可执行改进项，
+                 必要处附小段 ``` 代码示例；
+               - 无问题时只写「$noIssue」，不要为凑数编造问题，也不要输出空的改进建议；
+               - 某维度与代码无关时（如纯顺序代码没有并发问题）同样写「$noIssue」。
+            6. 「${headings.last()}」汇总关键发现与最高优先级的改进项（不超过 5 条）。
+            7. 报告正文用 $outLang 书写；代码标识符与关键字保持原样。
+            8. 只输出报告正文，不要寒暄与解释性废话。
+        """.trimIndent()
+
+        val user = buildString {
+            append("代码语言：").append(language).append('\n')
+            append("所在文件：").append(fileName).append('\n')
+            append("符号类型：").append(symbolKindName)
+            if (symbolName != null) append("（").append(symbolName).append("）")
+            append("\n\n待评审代码：\n").append(code)
+        }
+
+        return listOf(
+            ChatMessage("system", system),
+            ChatMessage("user", user),
+        )
+    }
+
     /** 解释结果的中文标题序列（与模型输出约定一一对应） */
     private val ZH_HEADINGS = listOf("概述", "作用与用途", "核心逻辑", "关键成分", "注意事项")
 
@@ -136,4 +197,48 @@ object PromptBuilder {
 
     /** 条件性第六标题（英文）：Flowchart */
     private const val EN_FLOWCHART_HEADING = "Flowchart"
+
+    /** 评审报告的中文标题序列：总体评价 + 十个维度（按重要性降序）+ 总结 */
+    private val ZH_REVIEW_HEADINGS = listOf(
+        "总体评价",
+        "正确性与潜在 Bug",
+        "安全性",
+        "并发安全",
+        "健壮性与异常处理",
+        "性能",
+        "资源管理",
+        "设计与架构",
+        "可维护性",
+        "可读性",
+        "代码规范",
+        "总结",
+    )
+
+    /** 评审报告的英文标题序列（与中文序列一一对应） */
+    private val EN_REVIEW_HEADINGS = listOf(
+        "Overall Assessment",
+        "Correctness & Potential Bugs",
+        "Security",
+        "Concurrency Safety",
+        "Robustness & Exception Handling",
+        "Performance",
+        "Resource Management",
+        "Design & Architecture",
+        "Maintainability",
+        "Readability",
+        "Code Style",
+        "Summary",
+    )
+
+    /** 维度内改进建议的加粗标签（中文） */
+    private const val ZH_REVIEW_SUGGESTION_LABEL = "改进建议"
+
+    /** 维度内改进建议的加粗标签（英文） */
+    private const val EN_REVIEW_SUGGESTION_LABEL = "Suggestions"
+
+    /** 维度无问题时的占位文案（中文） */
+    private const val ZH_REVIEW_NO_ISSUE = "无明显问题"
+
+    /** 维度无问题时的占位文案（英文） */
+    private const val EN_REVIEW_NO_ISSUE = "No issues found"
 }

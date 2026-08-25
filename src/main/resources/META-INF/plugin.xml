@@ -17,6 +17,12 @@
         <li>Invoke from the editor context menu (shortcut: Alt+L) or the gutter icon on the left</li>
         <li>Structured explanation displayed in a dedicated dialog with one-click copy of the full text</li>
     </ul>
+    <b>AI Code Review</b>
+    <ul>
+        <li>Review the selected code, or the class/method/function at caret, from the context menu or the gutter icon</li>
+        <li>Multi-dimensional quality report (correctness, security, concurrency, robustness, performance, resource management, design, maintainability, readability, code style) ordered by importance, each dimension with its own suggestions</li>
+        <li>Report displayed in a dedicated dialog with one-click copy of the full text</li>
+    </ul>
     <b>Flexible Model Configuration</b>
     <ul>
         <li>Built-in presets for OpenAI, DeepSeek, GLM (Zhipu), Kimi (Moonshot), MiniMax, Qwen (Alibaba) and Xiaomi MIMO, plus any custom OpenAI-compatible endpoint</li>
@@ -42,6 +48,7 @@
     <ul>
         <li>AI 提交信息生成：在 Git 提交对话框一键根据勾选的代码变更生成 Conventional Commits 格式提交信息，自动回填且可继续编辑</li>
         <li>AI 代码解释：选中代码或将光标置于类/方法/函数内，经右键菜单（快捷键 Alt+L）或行号旁图标一键生成结构化解释，支持复制全文</li>
+        <li>AI 代码评审：选中代码或将光标置于类/方法/函数内，经右键菜单或行号旁图标一键生成多维度质量评审报告（正确性、安全性、并发、健壮性、性能、资源管理、设计、可维护性、可读性、代码规范，按重要性排序，各维度附改进建议），支持复制全文</li>
         <li>灵活的模型配置：内置 OpenAI / DeepSeek / GLM / Kimi / MiniMax / Qwen / Xiaomi MIMO 预设及任意自定义 OpenAI 兼容端点，支持按量付费 / Coding Plan / Token Plan 类型，一键获取模型列表，状态栏即可快速切换模型</li>
         <li>隐私与安全：API Key 经 IntelliJ PasswordSafe 安全存储，不落盘；请求由 IDE 直连你配置的服务商端点</li>
         <li>界面语言可在设置中切换（中文/English），即时生效，无需重启 IDE</li>
@@ -69,6 +76,9 @@
         <!-- 编辑器行号旁 gutter「解释代码」图标 -->
         <codeInsight.lineMarkerProvider
                 implementationClass="com.lihtdev.lingxicode.action.ExplainCodeLineMarkerProvider"/>
+        <!-- 编辑器行号旁 gutter「评审代码」图标（与解释共用图标，同行 marker 由平台自动合并，点击弹出选择列表） -->
+        <codeInsight.lineMarkerProvider
+                implementationClass="com.lihtdev.lingxicode.action.ReviewCodeLineMarkerProvider"/>
         <!-- 状态栏模型切换器 -->
         <statusBarWidgetFactory id="lingxicode.modelSwitcher"
                                 implementation="com.lihtdev.lingxicode.ui.ModelSwitcherWidgetFactory"
@@ -105,6 +115,11 @@
                     icon="/icons/lingxicode.svg">
                 <keyboard-shortcut keymap="$default" first-keystroke="alt L"/>
             </action>
+
+            <!-- 评审代码：选中代码块 / 光标所在类、方法、函数，输出多维度质量评审报告 -->
+            <action id="LingxiCode.ReviewCode"
+                    class="com.lihtdev.lingxicode.action.ReviewCodeAction"
+                    icon="/icons/lingxicode.svg"/>
         </group>
     </actions>
 </idea-plugin>

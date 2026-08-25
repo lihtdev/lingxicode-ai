@@ -19,8 +19,7 @@ class PromptBuilderTest {
     fun `中文模式下系统提示词要求中文描述`() {
         val messages = PromptBuilder.buildCommitMessages(listOf("a.kt"), "diff", "zh")
         assertTrue(messages[0].content.contains("中文"))
-        assertTrue(messages[0].content.contains("Conventional Commits 1.0.0"))
-        assertTrue(messages[0].content.contains("https://www.conventionalcommits.org/en/v1.0.0/"))
+        assertTrue(messages[0].content.contains("Conventional Commits"))
     }
 
     @Test
@@ -40,10 +39,10 @@ class PromptBuilderTest {
     }
 
     @Test
-    fun `系统提示词包含破坏性变更标记说明`() {
+    fun `系统提示词包含可选 body 规范说明`() {
         val messages = PromptBuilder.buildCommitMessages(listOf("a.kt"), "diff", "zh")
-        assertTrue(messages[0].content.contains("!"))
-        assertTrue(messages[0].content.contains("BREAKING CHANGE"))
+        assertTrue(messages[0].content.contains("可选 body"))
+        assertTrue(messages[0].content.contains("无序列表"))
     }
 
     @Test
@@ -134,5 +133,83 @@ class PromptBuilderTest {
         assertTrue(user.contains("函数"))
         assertTrue(user.contains("add"))
         assertTrue(user.contains("def add(a, b):"))
+    }
+
+    @Test
+    fun `评审消息结构为 system 加 user 两条`() {
+        val messages = PromptBuilder.buildReviewCode("Kotlin", "A.kt", "函数", "greet", "fun greet() {}", "zh")
+        assertEquals(2, messages.size)
+        assertEquals("system", messages[0].role)
+        assertEquals("user", messages[1].role)
+    }
+
+    @Test
+    fun `中文评审提示词按重要性降序包含总体评价十维度与总结`() {
+        val messages = PromptBuilder.buildReviewCode("Kotlin", "A.kt", "函数", null, "code", "zh")
+        val system = messages[0].content
+        val expected = listOf(
+            "总体评价", "正确性与潜在 Bug", "安全性", "并发安全", "健壮性与异常处理",
+            "性能", "资源管理", "设计与架构", "可维护性", "可读性", "代码规范", "总结",
+        )
+        var previousIndex = -1
+        expected.forEach { title ->
+            val index = system.indexOf("## $title")
+            assertTrue(index >= 0, "应包含标题 $title")
+            assertTrue(index > previousIndex, "标题 $title 应按重要性降序排列")
+            previousIndex = index
+        }
+        assertTrue(system.contains("中文"), "应要求中文输出")
+    }
+
+    @Test
+    fun `英文评审提示词包含对应英文标题序列`() {
+        val messages = PromptBuilder.buildReviewCode("Kotlin", "A.kt", "function", null, "code", "en")
+        val system = messages[0].content
+        listOf(
+            "Overall Assessment", "Correctness & Potential Bugs", "Security", "Concurrency Safety",
+            "Robustness & Exception Handling", "Performance", "Resource Management",
+            "Design & Architecture", "Maintainability", "Readability", "Code Style", "Summary",
+        ).forEach { title ->
+            assertTrue(system.contains("## $title"), "应包含标题 $title")
+        }
+        assertTrue(system.contains("English"))
+    }
+
+    @Test
+    fun `评审提示词约束维度内有问题才给改进建议且不编造问题`() {
+        val messages = PromptBuilder.buildReviewCode("Kotlin", "A.kt", "函数", null, "code", "zh")
+        val system = messages[0].content
+        assertTrue(system.contains("**改进建议**"), "有问题时应给出维度内改进建议")
+        assertTrue(system.contains("无明显问题"), "无问题时应写占位文案")
+        assertTrue(system.contains("不要为凑数编造问题"), "应约束不编造问题")
+    }
+
+    @Test
+    fun `英文评审提示词维度内建议与占位文案同步切换`() {
+        val messages = PromptBuilder.buildReviewCode("Kotlin", "A.kt", "function", null, "code", "en")
+        val system = messages[0].content
+        assertTrue(system.contains("**Suggestions**"))
+        assertTrue(system.contains("No issues found"))
+    }
+
+    @Test
+    fun `评审提示词允许有序列表`() {
+        val messages = PromptBuilder.buildReviewCode("Kotlin", "A.kt", "函数", null, "code", "zh")
+        assertTrue(messages[0].content.contains("有序列表"), "允许语法应与渲染子集对齐（有序列表）")
+    }
+
+    @Test
+    fun `评审用户消息包含语言文件符号与代码且符号名为空时无括号残留`() {
+        val withName = PromptBuilder.buildReviewCode("Python", "calc.py", "函数", "add", "def add(a, b):", "zh")
+        val userWithName = withName[1].content
+        assertTrue(userWithName.contains("Python"))
+        assertTrue(userWithName.contains("calc.py"))
+        assertTrue(userWithName.contains("函数（add）"))
+        assertTrue(userWithName.contains("待评审代码：\ndef add(a, b):"))
+
+        val withoutName = PromptBuilder.buildReviewCode("Python", "calc.py", "代码块", null, "x = 1", "zh")
+        val userWithoutName = withoutName[1].content
+        assertTrue(userWithoutName.contains("符号类型：代码块\n"), "symbolName 为 null 时不应残留括号")
+        assertTrue(!userWithoutName.contains("（）"), "不应出现空括号")
     }
 }

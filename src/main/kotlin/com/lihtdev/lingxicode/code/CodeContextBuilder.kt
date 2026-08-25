@@ -11,7 +11,7 @@ import com.intellij.psi.util.PsiTreeUtil
 import com.lihtdev.lingxicode.i18n.LingxiCodeBundle
 
 /**
- * 「解释代码」上下文采集（平台胶水，须在 EDT 调用）。
+ * AI 代码功能（解释 / 评审等）的通用上下文采集（平台胶水，须在 EDT 调用）。
  *
  * 采集优先级：
  * 1. 编辑器选区（代码块）；
@@ -22,10 +22,10 @@ import com.lihtdev.lingxicode.i18n.LingxiCodeBundle
  */
 object CodeContextBuilder {
 
-    /** 待解释代码的最大字符数（超出截断并标注） */
+    /** 目标代码的最大字符数（超出截断并标注） */
     const val MAX_CODE_CHARS = 20000
 
-    fun build(e: AnActionEvent): ExplainCodeContext? {
+    fun build(e: AnActionEvent): CodeContext? {
         val project = e.project ?: return null
         val editor = e.getData(CommonDataKeys.EDITOR) ?: return null
         val psiFile = e.getData(CommonDataKeys.PSI_FILE) ?: return null
@@ -36,7 +36,7 @@ object CodeContextBuilder {
         val selectionModel = editor.selectionModel
         if (selectionModel.hasSelection()) {
             val selected = selectionModel.selectedText?.takeIf { it.isNotBlank() } ?: return null
-            return ExplainCodeContext(
+            return CodeContext(
                 project = project,
                 language = language,
                 fileName = fileName,
@@ -60,10 +60,10 @@ object CodeContextBuilder {
     }
 
     /** 从命名符号声明元素构建上下文（gutter 图标等非编辑器入口复用；须在 EDT/读动作内调用） */
-    fun fromElement(project: Project, owner: PsiNameIdentifierOwner): ExplainCodeContext? {
+    fun fromElement(project: Project, owner: PsiNameIdentifierOwner): CodeContext? {
         val text = owner.text
         if (text.isBlank()) return null
-        return ExplainCodeContext(
+        return CodeContext(
             project = project,
             language = owner.language.displayName,
             fileName = owner.containingFile?.name ?: "",
@@ -79,7 +79,7 @@ object CodeContextBuilder {
         project: Project,
         language: String,
         fileName: String,
-    ): ExplainCodeContext? {
+    ): CodeContext? {
         val document = editor.document
         val caretLine = editor.caretModel.primaryCaret.logicalPosition.line
         if (caretLine < 0 || caretLine >= document.lineCount) return null
@@ -101,7 +101,7 @@ object CodeContextBuilder {
         val code = document.getText(TextRange(document.getLineStartOffset(start), document.getLineEndOffset(end)))
         if (code.isBlank()) return null
 
-        return ExplainCodeContext(
+        return CodeContext(
             project = project,
             language = language,
             fileName = fileName,

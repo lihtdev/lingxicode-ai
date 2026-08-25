@@ -39,4 +39,22 @@ class LingxiCodeBundleLanguageTest {
         assertEquals("no.such.key", LingxiCodeBundle.messageIn("en", "no.such.key"))
         assertEquals("no.such.key", LingxiCodeBundle.messageIn("zh", "no.such.key"))
     }
+
+    @Test
+    fun `评审代码 action 文案双语解析`() {
+        assertEquals("评审代码", LingxiCodeBundle.messageIn("zh", "action.reviewCode.text"))
+        assertEquals("Review Code", LingxiCodeBundle.messageIn("en", "action.reviewCode.text"))
+    }
+
+    @Test
+    fun `评审报告标题带占位符双语格式化`() {
+        assertEquals(
+            "代码评审报告 — login（Kotlin）",
+            LingxiCodeBundle.messageIn("zh", "review.dialog.title", "login", "Kotlin"),
+        )
+        assertEquals(
+            "Code Review Report — login (Kotlin)",
+            LingxiCodeBundle.messageIn("en", "review.dialog.title", "login", "Kotlin"),
+        )
+    }
 }
