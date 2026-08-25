@@ -21,10 +21,10 @@ import javax.swing.JEditorPane
 import javax.swing.JPanel
 
 /**
- * 「代码解释」结果对话框（非模态）。
+ * 「代码解释 / 代码评审」共用结果对话框（非模态）。
  *
- * 以只读 HTML 视图展示渲染后的解释，提供「复制全文」与「关闭」。
- * 非模态设计允许用户一边阅读解释、一边继续浏览/编辑代码。
+ * 以只读 HTML 视图展示渲染后的 Markdown 结果，提供「复制全文」与「关闭」。
+ * 非模态设计允许用户一边阅读结果、一边继续浏览/编辑代码。
  */
 class CodeExplainDialog(
     private val project: Project,
@@ -55,7 +55,7 @@ class CodeExplainDialog(
 
         val scrollPane = JBScrollPane(editorPane)
         scrollPane.border = null
-        scrollPane.preferredSize = JBUI.size(760, 520)
+        scrollPane.preferredSize = JBUI.size(960, 640)
         // 加大长内容滚动步长（默认步长发涩）
         scrollPane.verticalScrollBar.unitIncrement = JBUI.scale(16)
 
@@ -81,18 +81,20 @@ class CodeExplainDialog(
     /**
      * 组装带样式的 HTML。字号从 JBFont 派生，随 IDE 字体缩放联动。
      * 注意：JEditorPane 的 HTMLEditorKit 仅支持有限 CSS 子集
-     * （font 系列、color、background-color、margin、padding），不支持
-     * border-radius、line-height 与后代选择器，故 code 样式全局生效
-     * （与 pre 内代码底色一致、视觉无缝）。
+     * （font 系列、color、background-color、margin、padding；border 部分支持，
+     * 不支持时静默降级），不支持 border-radius、line-height 与后代选择器，
+     * 故 code 样式全局生效（与 pre 内代码底色一致、视觉无缝）。
      */
     private fun buildHtml(body: String, fg: Color, codeBg: Color): String {
         val fgHex = hex(fg)
         val bgHex = hex(codeBg)
-        // 长文本阅读场景：正文在标签字号上加大一档，标题层级差拉大，行距放松降低阅读负担
+        val separatorHex = hex(HEADING_SEPARATOR)
+        // 长文本阅读场景：正文在标签字号上加大一档；标题层级差与段间距拉大，
+        // 二级标题带底部分隔线，保证「大标题 / 小标题 / 正文」的视觉层次
         val base = JBFont.label().size
         val bodySize = base + 1
-        val h2Size = base + 4
-        val h3Size = base + 2
+        val h2Size = base + 6
+        val h3Size = base + 3
         val codeSize = base
         // JEditorPane 的 CSS font-family 只解析第一个字体名（不像浏览器按栈回退），
         // 故运行时从优先级栈挑首个可用字体：英文字体为先，中文字体殿后；
@@ -109,15 +111,15 @@ class CodeExplainDialog(
             <html>
             <head>
             <style>
-              body { font-family: $bodyFamily; font-size: ${bodySize}px; color: $fgHex; padding: 2px 16px 12px; }
-              h2 { font-size: ${h2Size}px; font-weight: bold; margin: 16px 0 6px; }
-              h3 { font-size: ${h3Size}px; font-weight: bold; margin: 12px 0 4px; }
-              p { margin: 8px 0; }
-              ul { margin: 8px 0; padding-left: 24px; }
-              ol { margin: 8px 0; padding-left: 24px; }
-              li { margin: 4px 0; }
+              body { font-family: $bodyFamily; font-size: ${bodySize}px; color: $fgHex; padding: 8px 20px 16px; }
+              h2 { font-size: ${h2Size}px; font-weight: bold; margin: 22px 0 8px; padding-bottom: 4px; border-bottom: 1px solid $separatorHex; }
+              h3 { font-size: ${h3Size}px; font-weight: bold; margin: 14px 0 6px; }
+              p { margin: 10px 0; }
+              ul { margin: 10px 0; padding-left: 24px; }
+              ol { margin: 10px 0; padding-left: 24px; }
+              li { margin: 6px 0; }
               code { font-family: $codeFamily; font-size: ${codeSize}px; color: $fgHex; background-color: $bgHex; padding: 1px 3px; }
-              pre { background-color: $bgHex; padding: 10px; margin: 10px 0; }
+              pre { background-color: $bgHex; padding: 12px; margin: 12px 0; }
               strong { font-weight: bold; }
             </style>
             </head>
@@ -138,6 +140,9 @@ class CodeExplainDialog(
     companion object {
         /** 代码块底色（浅色主题浅灰 / 深色主题深灰），主题感知 */
         private val CODE_BLOCK_BACKGROUND = JBColor(Color(0xF2F2F2), Color(0x2B2B2B))
+
+        /** 二级标题底部分隔线颜色（浅色主题浅灰 / 深色主题暗灰），主题感知 */
+        private val HEADING_SEPARATOR = JBColor(Color(0xDDDDDD), Color(0x555555))
 
         /** 系统可用字体族集合（懒加载一次，供字体栈挑选） */
         private val availableFontFamilies: Set<String> by lazy {

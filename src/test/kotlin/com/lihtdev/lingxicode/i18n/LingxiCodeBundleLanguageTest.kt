@@ -47,6 +47,12 @@ class LingxiCodeBundleLanguageTest {
     }
 
     @Test
+    fun `gutter 共用图标 tooltip 双语解析`() {
+        assertEquals("AI 代码功能", LingxiCodeBundle.messageIn("zh", "ai.marker.tooltip"))
+        assertEquals("AI Code Actions", LingxiCodeBundle.messageIn("en", "ai.marker.tooltip"))
+    }
+
+    @Test
     fun `评审报告标题带占位符双语格式化`() {
         assertEquals(
             "代码评审报告 — login（Kotlin）",

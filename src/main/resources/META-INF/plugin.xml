@@ -73,12 +73,9 @@
                                  icon="/icons/lingxicode.svg"/>
         <!-- 通知组 -->
         <notificationGroup id="LingxiCodeAI" displayType="BALLOON"/>
-        <!-- 编辑器行号旁 gutter「解释代码」图标 -->
+        <!-- 编辑器行号旁 gutter「AI 代码功能」图标（解释/评审共用单图标，点击弹出功能选择菜单） -->
         <codeInsight.lineMarkerProvider
-                implementationClass="com.lihtdev.lingxicode.action.ExplainCodeLineMarkerProvider"/>
-        <!-- 编辑器行号旁 gutter「评审代码」图标（与解释共用图标，同行 marker 由平台自动合并，点击弹出选择列表） -->
-        <codeInsight.lineMarkerProvider
-                implementationClass="com.lihtdev.lingxicode.action.ReviewCodeLineMarkerProvider"/>
+                implementationClass="com.lihtdev.lingxicode.action.AiCodeLineMarkerProvider"/>
         <!-- 状态栏模型切换器 -->
         <statusBarWidgetFactory id="lingxicode.modelSwitcher"
                                 implementation="com.lihtdev.lingxicode.ui.ModelSwitcherWidgetFactory"
