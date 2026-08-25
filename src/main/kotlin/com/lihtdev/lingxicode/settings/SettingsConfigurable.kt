@@ -1,10 +1,9 @@
 package com.lihtdev.lingxicode.settings
 
-import com.intellij.ide.plugins.PluginManagerCore
 import com.intellij.icons.AllIcons
+import com.intellij.ide.plugins.cl.PluginAwareClassLoader
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.diagnostic.Logger
-import com.intellij.openapi.extensions.PluginId
 import com.intellij.openapi.options.Configurable
 import com.intellij.openapi.options.ShowSettingsUtil
 import com.intellij.openapi.progress.ProgressIndicator
@@ -220,11 +219,10 @@ class SettingsConfigurable : Configurable {
             // 取 JBFont 标题字号（随 IDE 缩放），显式去粗与英文名形成粗细对比
             font = JBFont.h1().deriveFont(Font.PLAIN)
         }
-        val version = try {
-            PluginManagerCore.getPlugin(PluginId.getId("com.lihtdev.lingxicode"))?.version ?: "0.1.0"
-        } catch (_: Exception) {
-            "0.1.0"
-        }
+        // 版本号经本插件类加载器取插件描述符（PluginAwareClassLoader 为公开 API，
+        // PluginManagerCore.getPlugin 在新版 IDE 已标记 Internal，市场校验会拦截）
+        val version = (SettingsConfigurable::class.java.classLoader as? PluginAwareClassLoader)
+            ?.pluginDescriptor?.version ?: "0.1.0"
         // 版本号：描边圆角框（paintBorder 在文字之后绘制，只能描边不能填充，否则会盖住文字）
         val versionLabel = JLabel(" v$version ").apply {
             font = JBFont.small()
