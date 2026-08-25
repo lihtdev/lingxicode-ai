@@ -42,6 +42,37 @@ class MarkdownToHtmlTest {
     }
 
     @Test
+    fun `有序列表转为 ol li`() {
+        val html = MarkdownToHtml.convert("1. 甲\n2. 乙")
+        assertTrue(html.contains("<ol>"))
+        assertTrue(html.contains("<li>甲</li>"))
+        assertTrue(html.contains("<li>乙</li>"))
+        assertTrue(html.contains("</ol>"))
+    }
+
+    @Test
+    fun `非 1 起始的编号行按普通段落处理`() {
+        // CommonMark 规则：仅编号 1 可开启有序列表，避免「2026. 计划」被吞掉编号
+        assertEquals("<p>2026. 发布计划</p>", MarkdownToHtml.convert("2026. 发布计划"))
+    }
+
+    @Test
+    fun `有序列表兼容右括号写法`() {
+        val html = MarkdownToHtml.convert("1) 甲")
+        assertTrue(html.contains("<ol>"))
+        assertTrue(html.contains("<li>甲</li>"))
+    }
+
+    @Test
+    fun `无序与有序列表相邻时分别闭合`() {
+        val html = MarkdownToHtml.convert("- 甲\n1. 乙")
+        val ulEnd = html.indexOf("</ul>")
+        val olStart = html.indexOf("<ol>")
+        assertTrue(ulEnd >= 0 && olStart >= 0, "应同时存在 ul 闭合与 ol 开始标签")
+        assertTrue(ulEnd < olStart, "ul 应先闭合再打开 ol")
+    }
+
+    @Test
     fun `相邻普通行合为一段`() {
         assertEquals("<p>hello world</p>", MarkdownToHtml.convert("hello\nworld"))
     }

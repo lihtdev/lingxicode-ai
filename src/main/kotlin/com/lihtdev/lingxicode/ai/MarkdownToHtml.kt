@@ -4,7 +4,7 @@ package com.lihtdev.lingxicode.ai
  * Markdown 子集 → HTML 转换（纯函数，可单测）。
  *
  * 仅支持「代码解释」结果所约定的子集：1-3 级标题、加粗、行内代码、
- * ``` 代码围栏、无序列表（- / *）、空行分段的段落。与 [PromptBuilder.buildExplainCode]
+ * ``` 代码围栏、无序列表（- / *）、有序列表（1. / 1)）、空行分段的段落。与 [PromptBuilder.buildExplainCode]
  * 对模型的输出约束保持一致；不依赖任何第三方 Markdown 库。
  */
 object MarkdownToHtml {
@@ -14,17 +14,25 @@ object MarkdownToHtml {
         val out = StringBuilder()
         val lines = markdown.lines()
         var i = 0
-        var inList = false
+        var openListTag: String? = null
 
         fun closeList() {
-            if (inList) {
-                out.append("</ul>\n")
-                inList = false
-            }
+            openListTag?.let { out.append("</").append(it).append(">\n") }
+            openListTag = null
+        }
+
+        /** 切换到指定列表标签（类型不同则先闭合旧列表），幂等 */
+        fun openList(tag: String) {
+            if (openListTag == tag) return
+            closeList()
+            out.append("<").append(tag).append(">\n")
+            openListTag = tag
         }
 
         while (i < lines.size) {
             val trimmed = lines[i].trim()
+            // 有序列表正文（仅编号 1 可开启新列表；为 null 时按普通文本处理）
+            val orderedText = orderedItemText(trimmed, openListTag == "ol")
 
             when {
                 trimmed.isEmpty() -> {
@@ -54,12 +62,15 @@ object MarkdownToHtml {
                     i++
                 }
 
-                isListItem(trimmed) -> {
-                    if (!inList) {
-                        out.append("<ul>\n")
-                        inList = true
-                    }
+                isUnorderedItem(trimmed) -> {
+                    openList("ul")
                     out.append("<li>").append(inline(trimmed.drop(2).trim())).append("</li>\n")
+                    i++
+                }
+
+                orderedText != null -> {
+                    openList("ol")
+                    out.append("<li>").append(inline(orderedText)).append("</li>\n")
                     i++
                 }
 
@@ -69,7 +80,9 @@ object MarkdownToHtml {
                     val sb = StringBuilder()
                     while (i < lines.size) {
                         val t = lines[i].trim()
-                        if (t.isEmpty() || headingLevel(t) > 0 || t.startsWith("```") || isListItem(t)) break
+                        if (t.isEmpty() || headingLevel(t) > 0 || t.startsWith("```") ||
+                            isUnorderedItem(t) || orderedItemText(t, inOrderedList = false) != null
+                        ) break
                         if (sb.isNotEmpty()) sb.append(' ')
                         sb.append(t)
                         i++
@@ -89,7 +102,18 @@ object MarkdownToHtml {
         else -> 0
     }
 
-    private fun isListItem(trimmed: String): Boolean = trimmed.startsWith("- ") || trimmed.startsWith("* ")
+    private fun isUnorderedItem(trimmed: String): Boolean = trimmed.startsWith("- ") || trimmed.startsWith("* ")
+
+    /**
+     * 有序列表项（`1. ` / `1) ` 两种写法），返回编号标记后的正文；非列表项返回 null。
+     * 遵循 CommonMark 规则：仅编号 1 可开启新列表（[inOrderedList] = false 时），
+     * 避免「2026. 计划」这类普通文本行被误判为列表项并吞掉编号。
+     */
+    private fun orderedItemText(trimmed: String, inOrderedList: Boolean): String? {
+        val match = ORDERED_ITEM_REGEX.find(trimmed) ?: return null
+        if (!inOrderedList && match.groupValues[1] != "1") return null
+        return match.groupValues[2]
+    }
 
     /** 转义 + 行内标记（行内代码、加粗） */
     private fun inline(text: String): String {
@@ -104,4 +128,5 @@ object MarkdownToHtml {
 
     private val INLINE_CODE_REGEX = Regex("`([^`]+)`")
     private val BOLD_REGEX = Regex("""\*\*(.+?)\*\*""")
+    private val ORDERED_ITEM_REGEX = Regex("""^(\d+)[.)]\s+(.*)$""")
 }

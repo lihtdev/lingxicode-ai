@@ -120,6 +120,12 @@ class PromptBuilderTest {
     }
 
     @Test
+    fun `解释提示词允许有序列表`() {
+        val messages = PromptBuilder.buildExplainCode("Kotlin", "A.kt", "函数", null, "code", "zh")
+        assertTrue(messages[0].content.contains("有序列表"), "允许语法应与渲染子集对齐（有序列表）")
+    }
+
+    @Test
     fun `解释用户消息包含语言文件符号类型与代码`() {
         val messages = PromptBuilder.buildExplainCode("Python", "calc.py", "函数", "add", "def add(a, b):", "zh")
         val user = messages[1].content

@@ -114,6 +114,7 @@ class CodeExplainDialog(
               h3 { font-size: ${h3Size}px; font-weight: bold; margin: 12px 0 4px; }
               p { margin: 8px 0; }
               ul { margin: 8px 0; padding-left: 24px; }
+              ol { margin: 8px 0; padding-left: 24px; }
               li { margin: 4px 0; }
               code { font-family: $codeFamily; font-size: ${codeSize}px; color: $fgHex; background-color: $bgHex; padding: 1px 3px; }
               pre { background-color: $bgHex; padding: 10px; margin: 10px 0; }

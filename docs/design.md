@@ -75,7 +75,7 @@ interface AiFeature {
 | `CodeContextBuilder` | 采集待解释代码（EDT）：选区 → 光标最近 `PsiNameIdentifierOwner` → 同缩进块兜底；`fromElement` 从声明元素采集；超 20000 字符截断 |
 | `SymbolKindDetector` | 纯函数符号判别（类/接口/方法/函数/代码块），语言无关关键字启发式 |
 | `PromptBuilder.buildExplainCode` | 结构化解释提示词：五段固定标题 + 条件性第六段（流程图，仅复杂控制流时由模型追加，ASCII/Unicode 制表符绘制于无语言标注围栏内）+ 语言/文件/符号类型/代码，输出语言跟随设置 |
-| `MarkdownToHtml` | 受限 Markdown 子集 → HTML（标题/加粗/行内代码/代码围栏/列表/段落 + 转义），零第三方依赖；围栏渲染依赖等宽字体 + 空白保留（流程图对齐依赖；已知局限：CJK 与 Unicode 框线字符混排时列对齐依赖字体回退，可能不完美） |
+| `MarkdownToHtml` | 受限 Markdown 子集 → HTML（标题/加粗/行内代码/代码围栏/无序与有序列表/段落 + 转义），零第三方依赖；围栏渲染依赖等宽字体 + 空白保留（流程图对齐依赖；已知局限：CJK 与 Unicode 框线字符混排时列对齐依赖字体回退，可能不完美） |
 | `ExplainCodeFeature` | 代码解释功能：组装解释 prompt，`cleanMarkdown` 清洗，渲染后弹 `CodeExplainDialog`（非模态） |
 | `CodeExplainDialog` | 非模态结果对话框：只读 HTML 视图 + 「复制全文」/「关闭」，主题适配底色 |
 | `AiInvocationService` | 统一执行管线 + 通知（LingxiCodeAI 通知组）；按 `feature.maxOutputTokens` 透传输出长度 |
