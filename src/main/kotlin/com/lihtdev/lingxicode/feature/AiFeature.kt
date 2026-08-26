@@ -1,5 +1,6 @@
 package com.lihtdev.lingxicode.feature
 
+import com.intellij.openapi.project.Project
 import com.lihtdev.lingxicode.ai.ChatMessage
 import com.lihtdev.lingxicode.ai.ResponseCleaner
 import com.lihtdev.lingxicode.settings.AppSettingsState
@@ -46,6 +47,15 @@ interface AiFeature {
      * @param context 功能上下文
      */
     fun handleResult(result: String, context: Any)
+
+    /**
+     * 创建流式展示视图（在 EDT、后台请求发起前调用一次）。
+     *
+     * 返回 null（默认）= 该功能不做流式 UI，仅在完成时回调 [handleResult]
+     * （即原有非流式行为，保证新功能零成本兼容）。
+     * 返回视图后，增量/完成/失败/取消均回调视图，[handleResult] 不再被调用。
+     */
+    fun createStreamView(project: Project, context: Any): AiStreamView? = null
 
     /**
      * 清洗模型原始输出（在调用 [handleResult] 前执行）。

@@ -1,5 +1,6 @@
 package com.lihtdev.lingxicode.feature
 
+import com.intellij.openapi.project.Project
 import com.intellij.openapi.vcs.CommitMessageI
 import com.intellij.openapi.vcs.changes.Change
 import com.lihtdev.lingxicode.ai.ChatMessage
@@ -35,7 +36,14 @@ class CommitMessageFeature : AiFeature {
         return PromptBuilder.buildCommitMessages(fileList, diffText, settings.outputLanguage)
     }
 
+    override fun createStreamView(project: Project, context: Any): AiStreamView {
+        // 提交信息直接流式回填提交框（无对话框、不展示思考过程）
+        val ctx = context as CommitFeatureContext
+        return CommitMessageStreamView(ctx.commitMessage)
+    }
+
     override fun handleResult(result: String, context: Any) {
+        // 非流式兜底路径（理论上仅在功能关闭流式时触发）
         val ctx = context as CommitFeatureContext
         // 回填提交消息框（用户可继续编辑后再提交）
         ctx.commitMessage.setCommitMessage(result)

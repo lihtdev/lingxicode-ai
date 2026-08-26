@@ -1,13 +1,13 @@
 package com.lihtdev.lingxicode.feature
 
+import com.intellij.openapi.project.Project
 import com.lihtdev.lingxicode.ai.ChatMessage
-import com.lihtdev.lingxicode.ai.MarkdownToHtml
 import com.lihtdev.lingxicode.ai.PromptBuilder
 import com.lihtdev.lingxicode.ai.ResponseCleaner
 import com.lihtdev.lingxicode.code.CodeContext
 import com.lihtdev.lingxicode.i18n.LingxiCodeBundle
 import com.lihtdev.lingxicode.settings.AppSettingsState
-import com.lihtdev.lingxicode.ui.CodeExplainDialog
+import com.lihtdev.lingxicode.ui.AiStreamingDialog
 
 /**
  * 「代码解释」功能：选区/符号 → prompt → 结构化解释 → 非模态对话框展示。
@@ -38,10 +38,20 @@ class ExplainCodeFeature : AiFeature {
 
     override fun cleanResponse(raw: String): String = ResponseCleaner.cleanMarkdown(raw)
 
-    override fun handleResult(result: String, context: Any) {
+    override fun createStreamView(project: Project, context: Any): AiStreamView {
+        // 请求发起前先弹对话框，边生成边展示（含思考过程折叠面板）
         val ctx = context as CodeContext
-        val html = MarkdownToHtml.convert(result)
-        CodeExplainDialog(ctx.project, dialogTitle(ctx), result, html).show()
+        return AiStreamingDialog(ctx.project, dialogTitle(ctx)).apply { show() }
+    }
+
+    override fun handleResult(result: String, context: Any) {
+        // 非流式兜底路径（理论上仅在功能关闭流式时触发）
+        val ctx = context as CodeContext
+        AiStreamingDialog(ctx.project, dialogTitle(ctx)).apply {
+            onContentDelta(result)
+            onCompleted(result)
+            show()
+        }
     }
 
     private fun dialogTitle(ctx: CodeContext): String {

@@ -18,6 +18,8 @@ data class ChatCompletionRequest(
     val messages: List<ChatMessage>,
     val temperature: Double = 0.3,
     @SerializedName("max_tokens") val maxTokens: Int = 256,
+    /** 流式开关：true 时走 SSE；null 时不出现在请求体（与非流式现状完全一致） */
+    val stream: Boolean? = null,
 )
 
 /**
