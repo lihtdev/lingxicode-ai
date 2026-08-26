@@ -17,6 +17,7 @@ import com.lihtdev.lingxicode.i18n.LingxiCodeBundle
 import com.lihtdev.lingxicode.service.AiInvocationService
 import java.awt.BorderLayout
 import java.awt.Color
+import java.awt.Dimension
 import java.awt.FlowLayout
 import java.awt.datatransfer.StringSelection
 import java.awt.event.ActionEvent
@@ -87,7 +88,7 @@ class AiStreamingDialog(
         )
         titleLabel.isOpaque = false
 
-        latestLineLabel = JBLabel()
+        latestLineLabel = zeroMinWidthLabel()
         latestLineLabel.isOpaque = false
         latestLineLabel.font = JBFont.label().deriveFont((JBFont.label().size - 1).toFloat())
         latestLineLabel.foreground = UIUtil.getContextHelpForeground()
@@ -123,7 +124,8 @@ class AiStreamingDialog(
     private fun buildStatusBar(): JComponent {
         progressIcon = AsyncProcessIcon("streaming")
 
-        statusLabel = JBLabel(LingxiCodeBundle.message("stream.generating"))
+        statusLabel = zeroMinWidthLabel()
+        statusLabel.text = LingxiCodeBundle.message("stream.generating")
         statusLabel.isOpaque = false
         statusLabel.font = JBFont.label().deriveFont((JBFont.label().size - 1).toFloat())
         statusLabel.foreground = UIUtil.getContextHelpForeground()
@@ -298,6 +300,15 @@ class AiStreamingDialog(
     /** 从优先级栈中挑第一个系统可用的字体族；均不可用时返回 [fallback] */
     private fun firstAvailableFont(fallback: String, vararg families: String): String =
         families.firstOrNull { it in availableFontFamilies } ?: fallback
+
+    /**
+     * 创建最小宽度为 0 的标签：流式思考文案 / 错误文案会突然变长，JLabel 的最小尺寸
+     * 等于完整文本宽度，平台 DialogRootPane 会按内容最小尺寸调用 setMinimumSize
+     * 把对话框自动加宽，故将此类动态长文本标签的最小宽度固定为 0（空间不足时文本裁剪）。
+     */
+    private fun zeroMinWidthLabel(): JBLabel = object : JBLabel() {
+        override fun getMinimumSize(): Dimension = Dimension(0, super.getMinimumSize().height)
+    }
 
     private fun hex(color: Color): String =
         "#%02x%02x%02x".format(color.red, color.green, color.blue)
