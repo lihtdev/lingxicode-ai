@@ -7,7 +7,7 @@ import com.intellij.openapi.ui.DialogWrapper
 import com.intellij.ui.JBColor
 import com.intellij.ui.components.JBLabel
 import com.intellij.ui.components.JBScrollPane
-import com.intellij.ui.components.JBTextArea
+import com.intellij.util.ui.AsyncProcessIcon
 import com.intellij.util.ui.JBFont
 import com.intellij.util.ui.JBUI
 import com.intellij.util.ui.UIUtil
@@ -17,6 +17,7 @@ import com.lihtdev.lingxicode.i18n.LingxiCodeBundle
 import com.lihtdev.lingxicode.service.AiInvocationService
 import java.awt.BorderLayout
 import java.awt.Color
+import java.awt.FlowLayout
 import java.awt.datatransfer.StringSelection
 import java.awt.event.ActionEvent
 import javax.swing.AbstractAction
@@ -29,8 +30,8 @@ import javax.swing.JPanel
 /**
  * 流式 AI 结果对话框（代码解释 / 代码评审共用，非模态）。
  *
- * 结构：北区「思考过程」可折叠面板（浅色实时流入，完成且用户未手动操作时自动收起）
- * + 中区只读 HTML 正文（增量重渲 + 滚动跟随）+ 南区状态条。
+ * 结构：北区「思考状态」单行（图标 + 最新一行思考，完成后整行隐藏）
+ * + 中区只读 HTML 正文（增量重渲 + 滚动跟随）+ 南区图标化状态条。
  *
  * 所有 [AiStreamView] 回调在 EDT 触发；回调首行守卫对话框已关闭（静默 no-op）。
  */
@@ -42,21 +43,18 @@ class AiStreamingDialog(
     /** 累计正文原文（EDT 串行写；完成后替换为清洗后定稿） */
     private val contentRaw = StringBuilder()
 
-    /** 累计思考过程原文（EDT 串行写） */
+    /** 累计思考过程原文（仅用于提取最新一行，不全量展示） */
     private val reasoningRaw = StringBuilder()
 
     /** 完成后的定稿文本（复制全文用；流式期间为 null，复制原文） */
     private var finalText: String? = null
 
-    /** 用户是否手动操作过思考面板（决定完成后是否自动收起） */
-    private var reasoningTouchedByUser = false
-
     // ---- 组件（createCenterPanel 中初始化） ----
-    private lateinit var thinkingPanel: JPanel
-    private lateinit var thinkingContent: JBTextArea
-    private lateinit var thinkingToggleLabel: JBLabel
+    private lateinit var thinkingRow: JPanel
+    private lateinit var latestLineLabel: JBLabel
     private lateinit var editorPane: JEditorPane
     private lateinit var scrollPane: JBScrollPane
+    private lateinit var progressIcon: AsyncProcessIcon
     private lateinit var statusLabel: JBLabel
 
     init {
@@ -80,56 +78,29 @@ class AiStreamingDialog(
         return panel
     }
 
-    /** 北区：思考过程折叠面板（初始不可见，首个 reasoning 增量到达时展示并展开） */
+    /** 北区：思考状态单行（初始不可见，首个 reasoning 增量到达时展示；完成后整行隐藏） */
     private fun buildThinkingPanel(): JComponent {
-        thinkingContent = JBTextArea()
-        thinkingContent.isEditable = false
-        thinkingContent.lineWrap = true
-        thinkingContent.wrapStyleWord = true
-        thinkingContent.isOpaque = false
-        thinkingContent.font = JBFont.label().deriveFont((JBFont.label().size - 1).toFloat())
-        thinkingContent.foreground = UIUtil.getContextHelpForeground()
+        val titleLabel = JBLabel(
+            LingxiCodeBundle.message("stream.thinking.ongoing"),
+            AllIcons.Actions.IntentionBulb,
+            JBLabel.LEFT,
+        )
+        titleLabel.isOpaque = false
 
-        val contentScroll = JBScrollPane(thinkingContent)
-        contentScroll.border = null
-        contentScroll.verticalScrollBar.unitIncrement = JBUI.scale(16)
-        contentScroll.preferredSize = JBUI.size(Short.MAX_VALUE.toInt(), THINKING_PANEL_MAX_HEIGHT)
+        latestLineLabel = JBLabel()
+        latestLineLabel.isOpaque = false
+        latestLineLabel.font = JBFont.label().deriveFont((JBFont.label().size - 1).toFloat())
+        latestLineLabel.foreground = UIUtil.getContextHelpForeground()
 
-        thinkingToggleLabel = JBLabel(LingxiCodeBundle.message("stream.thinking"), AllIcons.General.ChevronDown, JBLabel.LEFT)
-        thinkingToggleLabel.isOpaque = false
-        thinkingToggleLabel.cursor = java.awt.Cursor.getPredefinedCursor(java.awt.Cursor.HAND_CURSOR)
-        thinkingToggleLabel.addMouseListener(object : java.awt.event.MouseAdapter() {
-            override fun mouseClicked(e: java.awt.event.MouseEvent) {
-                reasoningTouchedByUser = true
-                toggleThinking()
-            }
-        })
-
-        val header = JPanel(BorderLayout())
-        header.isOpaque = false
-        header.add(thinkingToggleLabel, BorderLayout.WEST)
-        header.border = BorderFactory.createEmptyBorder(0, 0, JBUI.scale(4), 0)
-
-        thinkingPanel = JPanel(BorderLayout())
-        thinkingPanel.isOpaque = false
-        thinkingPanel.add(header, BorderLayout.NORTH)
-        thinkingPanel.add(contentScroll, BorderLayout.CENTER)
+        thinkingRow = JPanel(BorderLayout(JBUI.scale(8), 0))
+        thinkingRow.background = THINKING_ROW_BACKGROUND
+        thinkingRow.border = JBUI.Borders.empty(4, 10)
+        thinkingRow.add(titleLabel, BorderLayout.WEST)
+        thinkingRow.add(latestLineLabel, BorderLayout.CENTER)
         // 初始隐藏：模型未输出思考过程时不占空间
-        thinkingPanel.isVisible = false
-        return thinkingPanel
+        thinkingRow.isVisible = false
+        return thinkingRow
     }
-
-    /** 切换思考内容区展开/收起（chevron 随状态变化）。以滚动视口的可见性为准。 */
-    private fun toggleThinking() {
-        // 注意：thinkingContent 自身的 visible 恒为 true（收起改的是其父容器滚动视口），
-        // 判断展开态必须读父容器，否则面板收起后无法再次展开
-        val expanded = thinkingContent.parent.isVisible
-        thinkingContent.parent.isVisible = !expanded
-        thinkingToggleLabel.icon = if (expanded) AllIcons.General.ChevronRight else AllIcons.General.ChevronDown
-    }
-
-    /** 思考内容区当前是否展开（以滚动视口可见性为准） */
-    private fun isThinkingExpanded(): Boolean = thinkingContent.parent.isVisible
 
     /** 中区：只读 HTML 正文（样式迁移自 CodeExplainDialog） */
     private fun buildContentPanel(): JComponent {
@@ -148,14 +119,29 @@ class AiStreamingDialog(
         return scrollPane
     }
 
-    /** 南区：状态条（生成中 / 已完成 / 已取消 / 失败） */
+    /** 南区：图标化状态条（生成中转圈 / 已完成绿勾 / 已取消警告 / 失败错误） */
     private fun buildStatusBar(): JComponent {
+        progressIcon = AsyncProcessIcon("streaming")
+
         statusLabel = JBLabel(LingxiCodeBundle.message("stream.generating"))
         statusLabel.isOpaque = false
         statusLabel.font = JBFont.label().deriveFont((JBFont.label().size - 1).toFloat())
         statusLabel.foreground = UIUtil.getContextHelpForeground()
-        statusLabel.border = BorderFactory.createEmptyBorder(JBUI.scale(6), 0, 0, 0)
-        return statusLabel
+
+        val row = JPanel(FlowLayout(FlowLayout.LEFT, JBUI.scale(6), 0))
+        row.isOpaque = false
+        row.add(progressIcon)
+        row.add(statusLabel)
+
+        val panel = JPanel(BorderLayout())
+        panel.isOpaque = false
+        panel.border = BorderFactory.createCompoundBorder(
+            // 与正文之间一条主题细分隔线
+            BorderFactory.createMatteBorder(1, 0, 0, 0, JBColor.border()),
+            JBUI.Borders.empty(6, 2, 0, 2),
+        )
+        panel.add(row, BorderLayout.CENTER)
+        return panel
     }
 
     // ---- AiStreamView 回调（EDT） ----
@@ -168,16 +154,22 @@ class AiStreamingDialog(
 
     override fun onReasoningDelta(delta: String) {
         if (isDisposed) return
-        if (!thinkingPanel.isVisible) {
-            // 首个思考增量：展示面板并默认展开
-            thinkingPanel.isVisible = true
-            thinkingContent.parent.isVisible = true
-            thinkingToggleLabel.icon = AllIcons.General.ChevronDown
+        if (!thinkingRow.isVisible) {
+            // 首个思考增量：展示单行思考状态
+            thinkingRow.isVisible = true
         }
         reasoningRaw.append(delta)
-        thinkingContent.text = reasoningRaw.toString()
-        // 思考区滚动跟随到底
-        thinkingContent.caretPosition = thinkingContent.document.length
+        // 只展示最新一行作为「正在思考」状态提示（单行截断，不全量展示）
+        val latestLine = reasoningRaw.toString()
+            .lineSequence()
+            .lastOrNull { it.isNotBlank() }
+            ?.trim()
+            .orEmpty()
+        latestLineLabel.text = if (latestLine.length > LATEST_LINE_MAX_CHARS) {
+            latestLine.take(LATEST_LINE_MAX_CHARS) + "…"
+        } else {
+            latestLine
+        }
     }
 
     override fun onCompleted(cleaned: String) {
@@ -186,22 +178,28 @@ class AiStreamingDialog(
         contentRaw.setLength(0)
         contentRaw.append(cleaned)
         renderContent()
+        // 思考状态行整行隐藏，正文独占窗口
+        thinkingRow.isVisible = false
+        progressIcon.isVisible = false
+        statusLabel.icon = AllIcons.General.InspectionsOK
         statusLabel.text = LingxiCodeBundle.message("stream.completed")
-        // 用户未手动操作过思考面板 → 自动收起（面板保留可再展开）
-        if (thinkingPanel.isVisible && !reasoningTouchedByUser && isThinkingExpanded()) {
-            toggleThinking()
-        }
+        statusLabel.foreground = STATUS_SUCCESS_COLOR
     }
 
     override fun onFailed(errorMessage: String) {
         if (isDisposed) return
+        progressIcon.isVisible = false
+        statusLabel.icon = AllIcons.General.Error
         statusLabel.text = LingxiCodeBundle.message("stream.failed", errorMessage)
         statusLabel.foreground = UIUtil.getErrorForeground()
     }
 
     override fun onCancelled() {
         if (isDisposed) return
+        progressIcon.isVisible = false
+        statusLabel.icon = AllIcons.General.Warning
         statusLabel.text = LingxiCodeBundle.message("stream.cancelled")
+        statusLabel.foreground = STATUS_WARNING_COLOR
     }
 
     /**
@@ -247,6 +245,9 @@ class AiStreamingDialog(
         val fgHex = hex(fg)
         val bgHex = hex(codeBg)
         val separatorHex = hex(HEADING_SEPARATOR)
+        // 引用块使用上下文辅助色；链接使用平台当前主题链接色（主题感知）
+        val helpHex = hex(UIUtil.getContextHelpForeground())
+        val linkHex = hex(JBUI.CurrentTheme.Link.Foreground.ENABLED)
         // 长文本阅读场景：正文在标签字号上加大一档；标题层级差与段间距拉大，
         // 二级标题带底部分隔线，保证「大标题 / 小标题 / 正文」的视觉层次
         val base = JBFont.label().size
@@ -279,6 +280,12 @@ class AiStreamingDialog(
               code { font-family: $codeFamily; font-size: ${codeSize}px; color: $fgHex; background-color: $bgHex; padding: 1px 3px; }
               pre { background-color: $bgHex; padding: 12px; margin: 12px 0; }
               strong { font-weight: bold; }
+              a { color: $linkHex; }
+              blockquote { margin: 10px 0 10px 12px; color: $helpHex; }
+              hr { color: $separatorHex; background-color: $separatorHex; }
+              table { margin: 12px 0; }
+              td { border: 1px solid $separatorHex; padding: 4px 8px; }
+              th { border: 1px solid $separatorHex; padding: 4px 8px; font-weight: bold; background-color: $bgHex; }
             </style>
             </head>
             <body>
@@ -302,8 +309,17 @@ class AiStreamingDialog(
         /** 二级标题底部分隔线颜色（浅色主题浅灰 / 深色主题暗灰），主题感知 */
         private val HEADING_SEPARATOR = JBColor(Color(0xDDDDDD), Color(0x555555))
 
-        /** 思考面板内容区最大高度（px） */
-        private val THINKING_PANEL_MAX_HEIGHT = 160
+        /** 思考状态行底色（卡片感），主题感知 */
+        private val THINKING_ROW_BACKGROUND = JBColor(Color(0xF5F7FA), Color(0x3C3F41))
+
+        /** 状态条「已完成」成功色，主题感知 */
+        private val STATUS_SUCCESS_COLOR = JBColor(Color(0x59A869), Color(0x499C54))
+
+        /** 状态条「已取消」警告色，主题感知 */
+        private val STATUS_WARNING_COLOR = JBColor(Color(0x8A6D00), Color(0xBBB529))
+
+        /** 思考状态行「最新一行」截断长度（字符数） */
+        private const val LATEST_LINE_MAX_CHARS = 100
 
         /** 判定「滚动条贴底」的阈值（px） */
         private const val SCROLL_BOTTOM_THRESHOLD = 30
