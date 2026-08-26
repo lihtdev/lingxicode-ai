@@ -51,6 +51,44 @@ class MarkdownToHtmlTest {
     }
 
     @Test
+    fun `嵌套无序列表体现层级`() {
+        val html = MarkdownToHtml.convert("- 甲\n  - 乙\n- 丙")
+        assertTrue(html.contains("<li>甲<ul><li>乙</li></ul></li>"), "子项应嵌套在父项 li 内，实际：$html")
+        assertTrue(html.contains("<li>丙</li>"), "实际：$html")
+    }
+
+    @Test
+    fun `无序列表内嵌套有序列表`() {
+        val html = MarkdownToHtml.convert("- 甲\n  1. 乙\n  2. 丙")
+        assertTrue(html.contains("<li>甲<ol><li>乙</li><li>丙</li></ol></li>"), "实际：$html")
+    }
+
+    @Test
+    fun `三级嵌套后回到顶层`() {
+        val html = MarkdownToHtml.convert("- a\n  - b\n    - c\n- d")
+        assertTrue(html.contains("<li>a<ul><li>b<ul><li>c</li></ul></li></ul></li>"), "实际：$html")
+        assertTrue(html.contains("<li>d</li>"), "实际：$html")
+    }
+
+    @Test
+    fun `四空格缩进风格识别为嵌套`() {
+        val html = MarkdownToHtml.convert("- 甲\n    - 乙")
+        assertTrue(html.contains("<li>甲<ul><li>乙</li></ul></li>"), "实际：$html")
+    }
+
+    @Test
+    fun `制表符缩进识别为嵌套`() {
+        val html = MarkdownToHtml.convert("- 甲\n\t- 乙")
+        assertTrue(html.contains("<li>甲<ul><li>乙</li></ul></li>"), "实际：$html")
+    }
+
+    @Test
+    fun `嵌套层内同层切换列表类型`() {
+        val html = MarkdownToHtml.convert("- a\n  - b\n  1. c")
+        assertTrue(html.contains("<li>a<ul><li>b</li></ul><ol><li>c</li></ol></li>"), "实际：$html")
+    }
+
+    @Test
     fun `非 1 起始的编号行按普通段落处理`() {
         // CommonMark 规则：仅编号 1 可开启有序列表，避免「2026. 计划」被吞掉编号
         assertEquals("<p>2026. 发布计划</p>", MarkdownToHtml.convert("2026. 发布计划"))
