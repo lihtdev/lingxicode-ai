@@ -9,7 +9,7 @@ plugins {
 }
 
 group = "com.lihtdev.lingxicode"
-version = "0.1.0"
+version = "0.1.1"
 
 repositories {
     // 阿里云公共镜像（聚合了 central + jcenter）
