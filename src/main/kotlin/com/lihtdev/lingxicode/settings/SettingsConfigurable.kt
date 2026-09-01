@@ -222,7 +222,7 @@ class SettingsConfigurable : Configurable {
         // 版本号经本插件类加载器取插件描述符（PluginAwareClassLoader 为公开 API，
         // PluginManagerCore.getPlugin 在新版 IDE 已标记 Internal，市场校验会拦截）
         val version = (SettingsConfigurable::class.java.classLoader as? PluginAwareClassLoader)
-            ?.pluginDescriptor?.version ?: "0.1.1"
+            ?.pluginDescriptor?.version ?: "0.1.2"
         // 版本号：描边圆角框（paintBorder 在文字之后绘制，只能描边不能填充，否则会盖住文字）
         val versionLabel = JLabel(" v$version ").apply {
             font = JBFont.small()
