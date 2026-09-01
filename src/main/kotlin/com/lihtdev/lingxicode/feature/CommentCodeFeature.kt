@@ -10,26 +10,26 @@ import com.lihtdev.lingxicode.settings.AppSettingsState
 import com.lihtdev.lingxicode.ui.AiStreamingDialog
 
 /**
- * 「逐行解释」功能：选区/符号 → prompt → 单个代码围栏（原代码 + 逐行注释）→ 非模态对话框展示。
+ * 「逐行注释」功能：选区/符号 → prompt → 单个代码围栏（原代码 + 逐行注释）→ 非模态对话框展示。
  *
  * 与 [ExplainCodeFeature] 的概览式解释互补：
  * - 清洗用 [ResponseCleaner.cleanFencedCode]（合法输出本身即一个围栏，必须保留围栏行，
  *   不能用会剥掉外层围栏的 [ResponseCleaner.cleanMarkdown]）；
- * - 覆盖输出 token 上限为 [EXPLAIN_LINE_BY_LINE_MAX_TOKENS]（输出为代码原样 + 逐行注释，
+ * - 覆盖输出 token 上限为 [COMMENT_CODE_MAX_TOKENS]（输出为代码原样 + 逐行注释，
  *   约为代码两倍量级，需为长输出 + 思考链留足余量）。
  */
-class ExplainLineByLineFeature : AiFeature {
+class CommentCodeFeature : AiFeature {
 
-    override val id: String = "explain-line-by-line"
+    override val id: String = "comment-code"
 
-    override val displayName: String = LingxiCodeBundle.message("feature.explainLineByLine")
+    override val displayName: String = LingxiCodeBundle.message("feature.commentCode")
 
-    override val maxOutputTokens: Int = EXPLAIN_LINE_BY_LINE_MAX_TOKENS
+    override val maxOutputTokens: Int = COMMENT_CODE_MAX_TOKENS
 
     override fun buildPrompt(context: Any, settings: AppSettingsState): List<ChatMessage> {
         val ctx = context as CodeContext
         val kindName = LingxiCodeBundle.message(ctx.symbolKind.bundleKey)
-        return PromptBuilder.buildExplainLineByLine(
+        return PromptBuilder.buildCommentCode(
             language = ctx.language,
             fileName = ctx.fileName,
             symbolKindName = kindName,
@@ -59,11 +59,11 @@ class ExplainLineByLineFeature : AiFeature {
 
     private fun dialogTitle(ctx: CodeContext): String {
         val subject = ctx.symbolName ?: LingxiCodeBundle.message(ctx.symbolKind.bundleKey)
-        return LingxiCodeBundle.message("explainLineByLine.dialog.title", subject, ctx.language)
+        return LingxiCodeBundle.message("commentCode.dialog.title", subject, ctx.language)
     }
 
     companion object {
-        /** 逐行解释输出的最大 token 数（代码原样 + 逐行注释约为代码两倍量级；推理模型思考链也计入该配额） */
-        const val EXPLAIN_LINE_BY_LINE_MAX_TOKENS = 32768
+        /** 逐行注释输出的最大 token 数（代码原样 + 逐行注释约为代码两倍量级；推理模型思考链也计入该配额） */
+        const val COMMENT_CODE_MAX_TOKENS = 32768
     }
 }

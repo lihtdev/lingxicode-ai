@@ -108,7 +108,7 @@ class ResponseCleanerTest {
 
     @Test
     fun `cleanFencedCode 去除围栏外的前后杂文本`() {
-        val raw = "以下是逐行解释：\n```kotlin\nval a = 1\n```\n希望对你有帮助"
+        val raw = "以下是逐行注释：\n```kotlin\nval a = 1\n```\n希望对你有帮助"
         assertEquals("```kotlin\nval a = 1\n```", ResponseCleaner.cleanFencedCode(raw))
     }
 

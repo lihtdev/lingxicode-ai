@@ -214,76 +214,76 @@ class PromptBuilderTest {
     }
 
     @Test
-    fun `逐行解释消息结构为 system 加 user 两条`() {
-        val messages = PromptBuilder.buildExplainLineByLine("Kotlin", "A.kt", "函数", "greet", "fun greet() {}", "zh")
+    fun `逐行注释消息结构为 system 加 user 两条`() {
+        val messages = PromptBuilder.buildCommentCode("Kotlin", "A.kt", "函数", "greet", "fun greet() {}", "zh")
         assertEquals(2, messages.size)
         assertEquals("system", messages[0].role)
         assertEquals("user", messages[1].role)
     }
 
     @Test
-    fun `中文逐行解释提示词要求单个代码围栏输出`() {
-        val system = PromptBuilder.buildExplainLineByLine("Kotlin", "A.kt", "函数", null, "code", "zh")[0].content
+    fun `中文逐行注释提示词要求单个代码围栏输出`() {
+        val system = PromptBuilder.buildCommentCode("Kotlin", "A.kt", "函数", null, "code", "zh")[0].content
         assertTrue(system.contains("只包含一个"), "应要求整篇回答为单个围栏")
         assertTrue(system.contains("```"), "应包含围栏标记示例")
         assertTrue(system.contains("围栏之外不得输出"), "应禁止围栏外的任何内容")
     }
 
     @Test
-    fun `中文逐行解释提示词要求注释位于代码上方且对齐`() {
-        val system = PromptBuilder.buildExplainLineByLine("Kotlin", "A.kt", "函数", null, "code", "zh")[0].content
+    fun `中文逐行注释提示词要求注释位于代码上方且对齐`() {
+        val system = PromptBuilder.buildCommentCode("Kotlin", "A.kt", "函数", null, "code", "zh")[0].content
         assertTrue(system.contains("上方"), "注释应位于代码行上方")
         assertTrue(system.contains("相同缩进"), "注释应与被注释代码行对齐")
     }
 
     @Test
-    fun `中文逐行解释提示词要求代码原样保留`() {
-        val system = PromptBuilder.buildExplainLineByLine("Kotlin", "A.kt", "函数", null, "code", "zh")[0].content
+    fun `中文逐行注释提示词要求代码原样保留`() {
+        val system = PromptBuilder.buildCommentCode("Kotlin", "A.kt", "函数", null, "code", "zh")[0].content
         assertTrue(system.contains("原样保留"), "应要求代码原样保留")
         assertTrue(system.contains("不得改写"), "应禁止改写代码")
     }
 
     @Test
-    fun `中文逐行解释提示词约定跳过无实义行与原有注释行`() {
-        val system = PromptBuilder.buildExplainLineByLine("Kotlin", "A.kt", "函数", null, "code", "zh")[0].content
+    fun `中文逐行注释提示词约定跳过无实义行与原有注释行`() {
+        val system = PromptBuilder.buildCommentCode("Kotlin", "A.kt", "函数", null, "code", "zh")[0].content
         assertTrue(system.contains("空行"), "应约定跳过空行")
         assertTrue(system.contains("右括号"), "应约定跳过纯闭括号行")
         assertTrue(system.contains("原有注释行"), "原有注释行不应叠加解释注释")
     }
 
     @Test
-    fun `中文逐行解释提示词给出行注释语法示例`() {
-        val system = PromptBuilder.buildExplainLineByLine("Kotlin", "A.kt", "函数", null, "code", "zh")[0].content
+    fun `中文逐行注释提示词给出行注释语法示例`() {
+        val system = PromptBuilder.buildCommentCode("Kotlin", "A.kt", "函数", null, "code", "zh")[0].content
         assertTrue(system.contains("//"), "应给出 C 系行注释语法示例")
         assertTrue(system.contains("#"), "应给出脚本系行注释语法示例")
         assertTrue(system.contains("--"), "应给出 SQL 行注释语法示例")
     }
 
     @Test
-    fun `中文逐行解释提示词禁止注释之外的其他修改并要求中文正文`() {
-        val system = PromptBuilder.buildExplainLineByLine("Kotlin", "A.kt", "函数", null, "code", "zh")[0].content
+    fun `中文逐行注释提示词禁止注释之外的其他修改并要求中文正文`() {
+        val system = PromptBuilder.buildCommentCode("Kotlin", "A.kt", "函数", null, "code", "zh")[0].content
         assertTrue(system.contains("不加行号"), "应禁止添加行号")
         assertTrue(system.contains("中文（简体）"), "应要求中文注释正文")
     }
 
     @Test
-    fun `英文逐行解释提示词含围栏约束与英文注释要求`() {
-        val system = PromptBuilder.buildExplainLineByLine("Kotlin", "A.kt", "function", null, "code", "en")[0].content
+    fun `英文逐行注释提示词含围栏约束与英文注释要求`() {
+        val system = PromptBuilder.buildCommentCode("Kotlin", "A.kt", "function", null, "code", "en")[0].content
         assertTrue(system.contains("exactly one"), "应要求单个围栏")
         assertTrue(system.contains("English"), "应要求英文注释正文")
         assertTrue(system.contains("verbatim"), "应要求代码原样保留")
     }
 
     @Test
-    fun `逐行解释用户消息包含语言文件符号与代码且符号名为空时无括号残留`() {
-        val withName = PromptBuilder.buildExplainLineByLine("Python", "calc.py", "函数", "add", "def add(a, b):", "zh")
+    fun `逐行注释用户消息包含语言文件符号与代码且符号名为空时无括号残留`() {
+        val withName = PromptBuilder.buildCommentCode("Python", "calc.py", "函数", "add", "def add(a, b):", "zh")
         val userWithName = withName[1].content
         assertTrue(userWithName.contains("Python"))
         assertTrue(userWithName.contains("calc.py"))
         assertTrue(userWithName.contains("函数（add）"))
-        assertTrue(userWithName.contains("待逐行解释代码：\ndef add(a, b):"))
+        assertTrue(userWithName.contains("待注释代码：\ndef add(a, b):"))
 
-        val withoutName = PromptBuilder.buildExplainLineByLine("Python", "calc.py", "代码块", null, "x = 1", "zh")
+        val withoutName = PromptBuilder.buildCommentCode("Python", "calc.py", "代码块", null, "x = 1", "zh")
         val userWithoutName = withoutName[1].content
         assertTrue(userWithoutName.contains("符号类型：代码块\n"), "symbolName 为 null 时不应残留括号")
         assertTrue(!userWithoutName.contains("（）"), "不应出现空括号")

@@ -65,20 +65,20 @@ class LingxiCodeBundleLanguageTest {
     }
 
     @Test
-    fun `逐行解释 action 文案双语解析`() {
-        assertEquals("逐行解释", LingxiCodeBundle.messageIn("zh", "action.explainLineByLine.text"))
-        assertEquals("Explain Line by Line", LingxiCodeBundle.messageIn("en", "action.explainLineByLine.text"))
+    fun `逐行注释 action 文案双语解析`() {
+        assertEquals("逐行注释", LingxiCodeBundle.messageIn("zh", "action.commentCode.text"))
+        assertEquals("Comment Code", LingxiCodeBundle.messageIn("en", "action.commentCode.text"))
     }
 
     @Test
-    fun `逐行解释标题带占位符双语格式化`() {
+    fun `逐行注释标题带占位符双语格式化`() {
         assertEquals(
-            "逐行解释 — login（Kotlin）",
-            LingxiCodeBundle.messageIn("zh", "explainLineByLine.dialog.title", "login", "Kotlin"),
+            "逐行注释 — login（Kotlin）",
+            LingxiCodeBundle.messageIn("zh", "commentCode.dialog.title", "login", "Kotlin"),
         )
         assertEquals(
-            "Explain Line by Line — login (Kotlin)",
-            LingxiCodeBundle.messageIn("en", "explainLineByLine.dialog.title", "login", "Kotlin"),
+            "Comment Code — login (Kotlin)",
+            LingxiCodeBundle.messageIn("en", "commentCode.dialog.title", "login", "Kotlin"),
         )
     }
 }

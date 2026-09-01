@@ -187,19 +187,19 @@ object PromptBuilder {
     }
 
     /**
-     * 组装「逐行解释」功能的对话消息。
+     * 组装「逐行注释」功能的对话消息。
      *
      * 与 [buildExplainCode] 的概览式解释互补：输出为单个代码围栏，完整代码原样保留，
-     * 每行有实义的代码上方插入一行解释注释（注释正文随输出语言，注释语法随代码语言）。
+     * 每行有实义的代码上方插入一行注释（注释正文随输出语言，注释语法随代码语言）。
      *
      * @param language 代码所属语言展示名（如 Kotlin / Java）
      * @param fileName 文件展示名
      * @param symbolKindName 符号类型展示名（已本地化，如「类」/「方法」/「代码块」）
      * @param symbolName 命中符号名（选中代码块时为 null）
-     * @param code 待逐行解释代码文本
+     * @param code 待注释代码文本
      * @param outputLanguage 输出语言（"zh" 中文 / 其他值英文）
      */
-    fun buildExplainLineByLine(
+    fun buildCommentCode(
         language: String,
         fileName: String,
         symbolKindName: String,
@@ -211,9 +211,9 @@ object PromptBuilder {
         val outLang = if (en) "English" else "中文（简体）"
 
         val system = if (en) """
-            You are a senior software engineer who excels at explaining code line by line.
-            Please explain the user's code line by line: insert one concise comment above every
-            meaningful line of code, keeping the code itself intact.
+            You are a senior software engineer who excels at writing comments for code.
+            Please add comments to the user's code line by line: insert one concise comment
+            above every meaningful line of code, keeping the code itself intact.
 
             Output requirements:
             1. Your entire answer must contain exactly one ``` code fence, with the code language
@@ -242,11 +242,11 @@ object PromptBuilder {
             5. Apart from inserting comments above code lines, do not modify the code in any
                other way: no line numbers, no separators, no sub-headings, no added or removed
                blank lines.
-            6. If the code is incomplete or ends with a truncation marker, explain only what is
+            6. If the code is incomplete or ends with a truncation marker, comment only what is
                given; do not complete, guess, or continue the code.
             7. Output only the single fence described in rule 1; no greetings or filler.
         """.trimIndent() else """
-            你是一名资深软件工程师，擅长逐行讲解代码。请对用户提供的代码做逐行解释：
+            你是一名资深软件工程师，擅长为代码撰写注释。请为用户提供的代码逐行添加注释：
             在每行有实际含义的代码上方插入一条简短注释，代码本身原样保留。
 
             输出要求：
@@ -256,7 +256,7 @@ object PromptBuilder {
                不得改写、省略、重排、拆分或合并任何代码行。
             3. 逐行注释规则：
                - 对每行有实际含义的代码（声明、赋值、调用、控制流、表达式等），
-                 在紧邻其上方插入一行解释注释；
+                 在紧邻其上方插入一行注释；
                - 注释独占一行，与被注释的代码行对齐（相同缩进），内容控制在一行以内，
                  点明该行做什么或为什么这么做，不要逐字复述代码；
                - 注释使用该代码语言标准的行注释语法：Kotlin/Java/C/C++/Go/JS/TS 等用 //，
@@ -268,7 +268,7 @@ object PromptBuilder {
             4. 注释正文用 $outLang 书写；代码、标识符与关键字保持原样。
             5. 除在代码行上方插入注释外，不得对代码做任何其他修改：
                不加行号、不加分隔线、不加小标题、不额外增删空行。
-            6. 若代码不完整或末尾带截断标记，只解释给出的部分，不要补全、猜测或续写后续代码。
+            6. 若代码不完整或末尾带截断标记，只注释给出的部分，不要补全、猜测或续写后续代码。
             7. 只输出第 1 条所述的单个围栏，不要寒暄与解释性废话。
         """.trimIndent()
 
@@ -277,7 +277,7 @@ object PromptBuilder {
             append("所在文件：").append(fileName).append('\n')
             append("符号类型：").append(symbolKindName)
             if (symbolName != null) append("（").append(symbolName).append("）")
-            append("\n\n待逐行解释代码：\n").append(code)
+            append("\n\n待注释代码：\n").append(code)
         }
 
         return listOf(
