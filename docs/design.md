@@ -77,7 +77,8 @@ interface AiFeature {
 | `CodeContextBuilder` | 采集待解释代码（EDT）：选区 → 光标最近 `PsiNameIdentifierOwner` → 同缩进块兜底；`fromElement` 从声明元素采集；超 20000 字符截断 |
 | `SymbolKindDetector` | 纯函数符号判别（类/接口/方法/函数/代码块），语言无关关键字启发式 |
 | `PromptBuilder.buildExplainCode` | 结构化解释提示词：五段固定标题 + 条件性第六段（流程图，仅复杂控制流时由模型追加，ASCII/Unicode 制表符绘制于无语言标注围栏内）+ 语言/文件/符号类型/代码，输出语言跟随设置 |
-| `MarkdownToHtml` | 受限 Markdown 子集 → HTML（标题/加粗/行内代码/代码围栏/无序与有序列表/段落 + 转义），零第三方依赖；列表按行首缩进支持多级嵌套（相对缩进，兼容 2/4 空格风格）；围栏渲染依赖等宽字体 + 空白保留（流程图对齐依赖；已知局限：CJK 与 Unicode 框线字符混排时列对齐依赖字体回退，可能不完美） |
+| `MarkdownToHtml` | 受限 Markdown 子集 → HTML（标题/加粗/行内代码/代码围栏/无序与有序列表/段落 + 转义），零第三方依赖；列表按行首缩进支持多级嵌套（相对缩进，兼容 2/4 空格风格）；围栏渲染依赖等宽字体 + 空白保留（流程图对齐依赖；已知局限：CJK 与 Unicode 框线字符混排时列对齐依赖字体回退，可能不完美）；带语言标注的围栏可选经 [CodeHighlighter] 语法着色（传色且查表命中才高亮，无标注/未知语言/超 10 万字符熔断均降级纯转义） |
+| `CodeHighlighter` | 轻量语法高亮（纯函数，零平台依赖）：单遍字符扫描将关键字/字符串/数字/注释四类 token 染为内联 span（先转义再包裹）；17 组语言方言表（别名映射、行/块注释定界、引号集、多行字符串、SQL 大小写不敏感与 `''` 转义、Rust 不含单引号避免生命周期误染）；颜色由调用方注入（`AiStreamingDialog` 从 `EditorColorsManager.globalScheme` 取四色，主题跟随） |
 | `ExplainCodeFeature` | 代码解释功能：组装解释 prompt，`cleanMarkdown` 清洗，渲染后弹 `AiStreamingDialog`（非模态流式展示） |
 | `ReviewCodeFeature` | 代码评审功能：多维度质量报告 prompt（12 固定标题按重要性降序），`cleanMarkdown` 清洗，复用 `AiStreamingDialog` 展示 |
 | `ExplainLineByLineFeature` | 逐行解释功能：`buildExplainLineByLine` prompt（单个代码围栏 + 每行实义代码上方一条注释，空行/纯闭括号/原有注释行跳过，代码原样保留），`cleanFencedCode` 清洗（保留围栏），输出上限 32768（代码原样 + 注释约为两倍量级），复用 `AiStreamingDialog` 展示 |

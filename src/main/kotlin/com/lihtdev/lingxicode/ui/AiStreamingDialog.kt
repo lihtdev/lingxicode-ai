@@ -1,6 +1,9 @@
 package com.lihtdev.lingxicode.ui
 
 import com.intellij.icons.AllIcons
+import com.intellij.openapi.editor.DefaultLanguageHighlighterColors
+import com.intellij.openapi.editor.colors.EditorColorsManager
+import com.intellij.openapi.editor.colors.TextAttributesKey
 import com.intellij.openapi.ide.CopyPasteManager
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.DialogWrapper
@@ -11,6 +14,7 @@ import com.intellij.util.ui.AsyncProcessIcon
 import com.intellij.util.ui.JBFont
 import com.intellij.util.ui.JBUI
 import com.intellij.util.ui.UIUtil
+import com.lihtdev.lingxicode.ai.CodeHighlighter
 import com.lihtdev.lingxicode.ai.MarkdownToHtml
 import com.lihtdev.lingxicode.feature.AiStreamView
 import com.lihtdev.lingxicode.i18n.LingxiCodeBundle
@@ -213,12 +217,36 @@ class AiStreamingDialog(
         if (raw.isEmpty()) return
         val bar = scrollPane.verticalScrollBar
         val wasAtBottom = bar.value >= bar.maximum - bar.visibleAmount - SCROLL_BOTTOM_THRESHOLD
-        editorPane.text = buildHtml(MarkdownToHtml.convert(raw), editorPane.foreground, CODE_BLOCK_BACKGROUND)
+        // 每次重渲都重取当前配色方案的语法四色：流式期间切换主题自动跟随
+        editorPane.text = buildHtml(
+            MarkdownToHtml.convert(raw, codeHighlightColors()),
+            editorPane.foreground,
+            CODE_BLOCK_BACKGROUND,
+        )
         editorPane.caretPosition = 0
         if (wasAtBottom) {
             // setText 后布局未必立即完成，maximum 可能还是旧值；延后一拍再滚到底
             javax.swing.SwingUtilities.invokeLater { bar.value = bar.maximum }
         }
+    }
+
+    /**
+     * 从当前编辑器配色方案取代码语法高亮四色（关键字/字符串/数字/注释，
+     * 注释优先 LINE_COMMENT、回落 BLOCK_COMMENT）。
+     * 某 key 无 foregroundColor 则该类别为 null（不上色）；四色全空返回 null，
+     * convert 走纯转义，输出与不高亮完全一致（等效降级开关）。
+     */
+    private fun codeHighlightColors(): CodeHighlighter.HighlightColors? {
+        val scheme = EditorColorsManager.getInstance().globalScheme
+        fun hexOf(key: TextAttributesKey): String? =
+            scheme.getAttributes(key)?.foregroundColor?.let { hex(it) }
+        val keyword = hexOf(DefaultLanguageHighlighterColors.KEYWORD)
+        val string = hexOf(DefaultLanguageHighlighterColors.STRING)
+        val number = hexOf(DefaultLanguageHighlighterColors.NUMBER)
+        val comment = hexOf(DefaultLanguageHighlighterColors.LINE_COMMENT)
+            ?: hexOf(DefaultLanguageHighlighterColors.BLOCK_COMMENT)
+        if (keyword == null && string == null && number == null && comment == null) return null
+        return CodeHighlighter.HighlightColors(keyword, string, number, comment)
     }
 
     override fun createLeftSideActions(): Array<Action> {

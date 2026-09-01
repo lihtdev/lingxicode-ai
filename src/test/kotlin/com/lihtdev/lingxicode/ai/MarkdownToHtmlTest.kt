@@ -1,6 +1,7 @@
 package com.lihtdev.lingxicode.ai
 
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 
@@ -132,5 +133,40 @@ class MarkdownToHtmlTest {
     fun `空输入返回空串`() {
         assertEquals("", MarkdownToHtml.convert(""))
         assertEquals("", MarkdownToHtml.convert("   \n  \n"))
+    }
+
+    @Test
+    fun `传色且有语言标注时代码块高亮`() {
+        val colors = CodeHighlighter.HighlightColors("#cc7832", "#6a8759", "#6897bb", "#808080")
+        val html = MarkdownToHtml.convert("```kotlin\nfun main()\n```", colors)
+        assertTrue(
+            html.contains("<pre><code><span style=\"color:#cc7832\">fun</span> main()</code></pre>"),
+            "带语言标注的围栏应产出高亮 span: $html",
+        )
+    }
+
+    @Test
+    fun `传色但无语言标注不产生 span`() {
+        // 流程图兼容：无标注围栏即使传入颜色也保持纯文本
+        val colors = CodeHighlighter.HighlightColors("#cc7832", "#6a8759", "#6897bb", "#808080")
+        val html = MarkdownToHtml.convert("```\nfun x\n```", colors)
+        assertTrue(html.contains("<pre><code>fun x</code></pre>"), "无标注围栏应保持纯文本: $html")
+        assertFalse(html.contains("<span"), "无标注围栏不应产生 span: $html")
+    }
+
+    @Test
+    fun `默认参数不产生 span`() {
+        // 向后兼容锚点：不传颜色时带标注围栏也走纯转义路径
+        val html = MarkdownToHtml.convert("```kotlin\nfun x\n```")
+        assertTrue(html.contains("<pre><code>fun x</code></pre>"), "默认参数应保持纯文本: $html")
+        assertFalse(html.contains("<span"), "默认参数不应产生 span: $html")
+    }
+
+    @Test
+    fun `传色且未知语言标注降级`() {
+        val colors = CodeHighlighter.HighlightColors("#cc7832", "#6a8759", "#6897bb", "#808080")
+        val html = MarkdownToHtml.convert("```mermaid\n<x>\n```", colors)
+        assertTrue(html.contains("&lt;x&gt;"), "未知语言应降级纯转义: $html")
+        assertFalse(html.contains("<span"), "未知语言不应产生 span: $html")
     }
 }

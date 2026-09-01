@@ -64,8 +64,13 @@ object MarkdownToHtml {
         }
     }
 
-    /** 将说明结果 Markdown 转为可在只读 HTML 视图中展示的 HTML 片段 */
-    fun convert(markdown: String): String {
+    /**
+     * 将说明结果 Markdown 转为可在只读 HTML 视图中展示的 HTML 片段。
+     *
+     * @param codeColors 代码块语法高亮四色；为 null（默认）时代码块保持纯文本转义，
+     *   仅带语言标注的围栏会走高亮（无标注的流程图围栏不受影响）
+     */
+    fun convert(markdown: String, codeColors: CodeHighlighter.HighlightColors? = null): String {
         val out = StringBuilder()
         val lists = ListNestingWriter(out)
         val lines = markdown.lines()
@@ -84,7 +89,7 @@ object MarkdownToHtml {
 
                 trimmed.startsWith("```") -> {
                     lists.closeAllLists()
-                    i = appendFencedCode(out, lines, i)
+                    i = appendFencedCode(out, lines, i, codeColors)
                 }
 
                 headingLevel(trimmed) > 0 -> {
@@ -114,7 +119,15 @@ object MarkdownToHtml {
     }
 
     /** 输出 ``` 围栏代码块（原样保留内部行），返回处理后的下一行下标 */
-    private fun appendFencedCode(out: StringBuilder, lines: List<String>, start: Int): Int {
+    private fun appendFencedCode(
+        out: StringBuilder,
+        lines: List<String>,
+        start: Int,
+        codeColors: CodeHighlighter.HighlightColors?,
+    ): Int {
+        // 语言标注：起始围栏行 ``` 后的 info string 首词（如 ```kotlin 的 kotlin）；
+        // 空则不高亮（流程图围栏无标注），带参数标注（```kotlin hl_lines="1"）只取语言词
+        val language = lines[start].trim().drop(3).trim().substringBefore(' ')
         var i = start + 1 // 跳过起始围栏
         val codeLines = ArrayList<String>()
         while (i < lines.size && !lines[i].trim().startsWith("```")) {
@@ -122,8 +135,14 @@ object MarkdownToHtml {
             i++
         }
         i++ // 跳过结束围栏
-        out.append("<pre><code>").append(escape(codeLines.joinToString("\n")))
-            .append("</code></pre>\n")
+        val code = codeLines.joinToString("\n")
+        out.append("<pre><code>").append(
+            if (codeColors != null && language.isNotEmpty()) {
+                CodeHighlighter.highlight(code, language, codeColors)
+            } else {
+                escape(code)
+            }
+        ).append("</code></pre>\n")
         return i
     }
 
