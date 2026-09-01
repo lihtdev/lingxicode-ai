@@ -61,4 +61,28 @@ object ResponseCleaner {
         }
         return lines.subList(start, end + 1).joinToString("\n").trim()
     }
+
+    /**
+     * 清洗「逐行解释」输出（用于输出本身即单个代码围栏的功能）。
+     *
+     * 与 [cleanMarkdown] 相反：本功能的合法输出恰好是「整篇 = 一个 ``` 围栏」，
+     * 必须保留围栏行才能渲染为代码块。本方法提取首个围栏行到最后一个围栏行
+     * （含围栏行），剥掉模型可能在围栏外附加的说明文字：
+     * - 无围栏（模型直接输出代码）：去首尾空白后原样返回（降级路径）；
+     * - 仅一行围栏：位于开头（流式截断的开围栏）则从该行取到末尾；
+     *   位于结尾（缺开围栏的模型伪影）则剥掉该行、保留其前内容。
+     */
+    fun cleanFencedCode(raw: String): String {
+        val lines = raw.lineSequence().toList()
+        val first = lines.indexOfFirst { it.trim().startsWith("```") }
+        val last = lines.indexOfLast { it.trim().startsWith("```") }
+        return when {
+            first == -1 -> lines.joinToString("\n").trim()
+            first == last && first == lines.size - 1 && first > 0 ->
+                // 孤立尾围栏：剥掉该伪影行，避免整段内容被丢弃
+                lines.subList(0, first).joinToString("\n").trim()
+            first == last -> lines.subList(first, lines.size).joinToString("\n").trim()
+            else -> lines.subList(first, last + 1).joinToString("\n").trim()
+        }
+    }
 }

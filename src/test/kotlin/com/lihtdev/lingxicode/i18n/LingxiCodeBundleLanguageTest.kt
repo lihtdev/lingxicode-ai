@@ -63,4 +63,22 @@ class LingxiCodeBundleLanguageTest {
             LingxiCodeBundle.messageIn("en", "review.dialog.title", "login", "Kotlin"),
         )
     }
+
+    @Test
+    fun `逐行解释 action 文案双语解析`() {
+        assertEquals("逐行解释", LingxiCodeBundle.messageIn("zh", "action.explainLineByLine.text"))
+        assertEquals("Explain Line by Line", LingxiCodeBundle.messageIn("en", "action.explainLineByLine.text"))
+    }
+
+    @Test
+    fun `逐行解释标题带占位符双语格式化`() {
+        assertEquals(
+            "逐行解释 — login（Kotlin）",
+            LingxiCodeBundle.messageIn("zh", "explainLineByLine.dialog.title", "login", "Kotlin"),
+        )
+        assertEquals(
+            "Explain Line by Line — login (Kotlin)",
+            LingxiCodeBundle.messageIn("en", "explainLineByLine.dialog.title", "login", "Kotlin"),
+        )
+    }
 }

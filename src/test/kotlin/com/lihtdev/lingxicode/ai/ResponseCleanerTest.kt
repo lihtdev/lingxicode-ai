@@ -99,4 +99,43 @@ class ResponseCleanerTest {
     fun `cleanMarkdown 无包裹围栏时保持原样`() {
         assertEquals("## 概述\n说明内容", ResponseCleaner.cleanMarkdown("## 概述\n说明内容"))
     }
+
+    @Test
+    fun `cleanFencedCode 保留单个围栏输出（含围栏行）`() {
+        val raw = "```kotlin\n// 声明变量\nval a = 1\n```"
+        assertEquals(raw, ResponseCleaner.cleanFencedCode(raw))
+    }
+
+    @Test
+    fun `cleanFencedCode 去除围栏外的前后杂文本`() {
+        val raw = "以下是逐行解释：\n```kotlin\nval a = 1\n```\n希望对你有帮助"
+        assertEquals("```kotlin\nval a = 1\n```", ResponseCleaner.cleanFencedCode(raw))
+    }
+
+    @Test
+    fun `cleanFencedCode 无围栏时去首尾空白原样返回`() {
+        assertEquals("// 注释\nval a = 1", ResponseCleaner.cleanFencedCode("  \n// 注释\nval a = 1\n\n"))
+    }
+
+    @Test
+    fun `cleanFencedCode 仅一行围栏时取到末尾（未闭合容错）`() {
+        val raw = "```kotlin\nval a = 1"
+        assertEquals(raw, ResponseCleaner.cleanFencedCode(raw))
+    }
+
+    @Test
+    fun `cleanFencedCode 孤立尾围栏时剥掉伪影行保留前文`() {
+        val raw = "// 声明变量\nval a = 1\n```"
+        assertEquals("// 声明变量\nval a = 1", ResponseCleaner.cleanFencedCode(raw))
+    }
+
+    @Test
+    fun `cleanFencedCode 围栏内部含围栏行时取首尾围栏`() {
+        val raw = "```\ncode\n```\n说明\n```\nmore\n```"
+        val cleaned = ResponseCleaner.cleanFencedCode(raw)
+        assertTrue(cleaned.startsWith("```"))
+        assertTrue(cleaned.endsWith("```"))
+        assertTrue(cleaned.contains("说明"))
+        assertTrue(cleaned.contains("more"))
+    }
 }

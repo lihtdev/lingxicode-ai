@@ -16,9 +16,9 @@ import com.lihtdev.lingxicode.i18n.LingxiCodeBundle
 import java.awt.event.MouseEvent
 
 /**
- * 编辑器行号旁 gutter「AI 代码功能」图标（解释 / 评审共用）：
+ * 编辑器行号旁 gutter「AI 代码功能」图标（解释 / 评审 / 逐行解释共用）：
  * 仅在类/接口/方法/函数等声明级符号的 **名称标识符**上显示（灰暗配色），
- * 单击弹出功能选择菜单（解释该代码 / 评审该代码）。
+ * 单击弹出功能选择菜单（解释该代码 / 评审该代码 / 逐行解释该代码）。
  * 变量/字段/参数等不展示，语言无关，仅依赖平台级 PSI（[PsiNameIdentifierOwner]）。
  */
 class AiCodeLineMarkerProvider : LineMarkerProvider {
@@ -50,15 +50,17 @@ class AiCodeLineMarkerProvider : LineMarkerProvider {
         val items = listOf(
             LingxiCodeBundle.message("explain.marker.tooltip"),
             LingxiCodeBundle.message("review.marker.tooltip"),
+            LingxiCodeBundle.message("explainLineByLine.marker.tooltip"),
         )
         val step = object : BaseListPopupStep<String>(null, items) {
             override fun onChosen(selectedValue: String?, finalChoice: Boolean): PopupStep<*>? {
                 if (finalChoice && selectedValue != null) {
-                    // 上下文在选中后采集一次，两个功能共用（为空时由 Starter 给出警告通知）
+                    // 上下文在选中后采集一次，三个功能共用（为空时由 Starter 给出警告通知）
                     val context = CodeContextBuilder.fromElement(project, owner)
                     when (items.indexOf(selectedValue)) {
                         0 -> ExplainCodeStarter.trigger(project, context)
                         1 -> ReviewCodeStarter.trigger(project, context)
+                        2 -> ExplainLineByLineStarter.trigger(project, context)
                     }
                 }
                 return FINAL_CHOICE

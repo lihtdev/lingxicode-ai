@@ -186,6 +186,106 @@ object PromptBuilder {
         )
     }
 
+    /**
+     * 组装「逐行解释」功能的对话消息。
+     *
+     * 与 [buildExplainCode] 的概览式解释互补：输出为单个代码围栏，完整代码原样保留，
+     * 每行有实义的代码上方插入一行解释注释（注释正文随输出语言，注释语法随代码语言）。
+     *
+     * @param language 代码所属语言展示名（如 Kotlin / Java）
+     * @param fileName 文件展示名
+     * @param symbolKindName 符号类型展示名（已本地化，如「类」/「方法」/「代码块」）
+     * @param symbolName 命中符号名（选中代码块时为 null）
+     * @param code 待逐行解释代码文本
+     * @param outputLanguage 输出语言（"zh" 中文 / 其他值英文）
+     */
+    fun buildExplainLineByLine(
+        language: String,
+        fileName: String,
+        symbolKindName: String,
+        symbolName: String?,
+        code: String,
+        outputLanguage: String,
+    ): List<ChatMessage> {
+        val en = outputLanguage.equals("en", ignoreCase = true)
+        val outLang = if (en) "English" else "中文（简体）"
+
+        val system = if (en) """
+            You are a senior software engineer who excels at explaining code line by line.
+            Please explain the user's code line by line: insert one concise comment above every
+            meaningful line of code, keeping the code itself intact.
+
+            Output requirements:
+            1. Your entire answer must contain exactly one ``` code fence, with the code language
+               marked on the opening fence line (e.g. ```kotlin, ```python); output nothing
+               outside the fence — no headings, no notes, no greetings, and no second fence.
+            2. Keep the code verbatim: copy every line of the user's code into the fence in the
+               original order, preserving the original indentation, blank lines and line breaks;
+               never rewrite, omit, reorder, split or merge any code line.
+            3. Line-by-line comment rules:
+               - For every line of code with real meaning (declarations, assignments, calls,
+                 control flow, expressions, etc.), insert one explanatory comment on the line
+                 immediately above it;
+               - Each comment occupies its own line, aligned with the code line it explains
+                 (same indentation), kept within one line, stating what the line does or why —
+                 do not parrot the code literally;
+               - Use the standard line-comment syntax of the code language: // for
+                 Kotlin/Java/C/C++/Go/JS/TS and similar, # for Python/Ruby/Shell/YAML,
+                 -- for SQL, ' for Visual Basic; for languages without a line-comment syntax
+                 (e.g. HTML/XML), wrap each comment in a block comment;
+               - Do not comment these lines: blank lines, lines containing only a closing brace
+                 or parenthesis, and pre-existing comment lines (original comments are part of
+                 the code and must be kept verbatim, without adding another comment above them);
+               - Consecutive tightly-coupled lines expressing one idea may be treated as a group,
+                 with a single comment above the first line only.
+            4. Write comment text in $outLang; keep code, identifiers and keywords as-is.
+            5. Apart from inserting comments above code lines, do not modify the code in any
+               other way: no line numbers, no separators, no sub-headings, no added or removed
+               blank lines.
+            6. If the code is incomplete or ends with a truncation marker, explain only what is
+               given; do not complete, guess, or continue the code.
+            7. Output only the single fence described in rule 1; no greetings or filler.
+        """.trimIndent() else """
+            你是一名资深软件工程师，擅长逐行讲解代码。请对用户提供的代码做逐行解释：
+            在每行有实际含义的代码上方插入一条简短注释，代码本身原样保留。
+
+            输出要求：
+            1. 整个回答只包含一个 ``` 代码围栏，起始围栏行标注代码语言（如 ```kotlin、```python）；
+               围栏之外不得输出任何标题、说明、寒暄或第二个围栏。
+            2. 代码原样保留：把用户提供的代码逐行完整复制进围栏，保持原有缩进、空行与换行，
+               不得改写、省略、重排、拆分或合并任何代码行。
+            3. 逐行注释规则：
+               - 对每行有实际含义的代码（声明、赋值、调用、控制流、表达式等），
+                 在紧邻其上方插入一行解释注释；
+               - 注释独占一行，与被注释的代码行对齐（相同缩进），内容控制在一行以内，
+                 点明该行做什么或为什么这么做，不要逐字复述代码；
+               - 注释使用该代码语言标准的行注释语法：Kotlin/Java/C/C++/Go/JS/TS 等用 //，
+                 Python/Ruby/Shell/YAML 用 #，SQL 用 --，Visual Basic 用 '；
+                 无行注释语法的语言（如 HTML/XML）用块注释包裹单行；
+               - 以下行不加注释：空行、只有右括号/右圆括号等单个标点的行、原有注释行
+                 （原注释属于代码，必须原样保留，也不要在其上方再加解释）；
+               - 连续多行表达同一件事的紧密语句可视作一组，仅在首行上方加一条注释。
+            4. 注释正文用 $outLang 书写；代码、标识符与关键字保持原样。
+            5. 除在代码行上方插入注释外，不得对代码做任何其他修改：
+               不加行号、不加分隔线、不加小标题、不额外增删空行。
+            6. 若代码不完整或末尾带截断标记，只解释给出的部分，不要补全、猜测或续写后续代码。
+            7. 只输出第 1 条所述的单个围栏，不要寒暄与解释性废话。
+        """.trimIndent()
+
+        val user = buildString {
+            append("代码语言：").append(language).append('\n')
+            append("所在文件：").append(fileName).append('\n')
+            append("符号类型：").append(symbolKindName)
+            if (symbolName != null) append("（").append(symbolName).append("）")
+            append("\n\n待逐行解释代码：\n").append(code)
+        }
+
+        return listOf(
+            ChatMessage("system", system),
+            ChatMessage("user", user),
+        )
+    }
+
     /** 解释结果的中文标题序列（与模型输出约定一一对应） */
     private val ZH_HEADINGS = listOf("概述", "作用与用途", "核心逻辑", "关键成分", "注意事项")
 
